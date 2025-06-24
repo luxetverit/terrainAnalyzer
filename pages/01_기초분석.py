@@ -27,18 +27,24 @@ st.markdown("""
 /* 기본 버튼 스타일 */
 .stButton > button {
     width: 100%;
-    height: 56px;
-    border-radius: 16px !important;
+    min-width: 220px;
+    max-width: 100%;
+    min-height: 80px;
+    padding: 16px 8px !important;
+    border-radius: 18px !important;
     border: 2.5px solid #1976D2 !important;
     background: linear-gradient(90deg, #E3F2FD 0%, #FFFFFF 100%) !important;
     color: #154075 !important;
     font-weight: 700 !important;
-    font-size: 22px !important;
-    margin-top: 10px;
-    margin-bottom: 10px;
-    box-shadow: 0 4px 16px rgba(25, 118, 210, 0.13);
-    transition: 0.15s;
+    font-size: 26px !important;
+    line-height: 1.32 !important;
+    white-space: pre-line !important;  /* 줄바꿈 허용 */
+    margin-top: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 16px rgba(25, 118, 210, 0.12);
+    transition: 0.2s;
     cursor: pointer;
+    text-align: center;
 }
             
 stButton > button:hover {
@@ -136,7 +142,7 @@ if 'analysis_done' not in st.session_state:
                 st.stop()
 
             # 카카오맵 API 키 직접 입력 - 제공해주신 API 키 입력
-            kakao_api_key = "bc9e52aa60d3c71a19742019b5ca3eaf"  # 사용자가 제공한 API 키
+            kakao_api_key = ""  # 사용자가 제공한 API 키
 
             if kakao_api_key:
                 # 카카오맵 API를 이용해 위치 정보 조회
