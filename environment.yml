@@ -1,6 +1,8 @@
 name: ta
 channels:
   - conda-forge
+node_properties:
+  - channel_priority=strict
 dependencies:
   - python=3.10
   - gdal=3.10.3
