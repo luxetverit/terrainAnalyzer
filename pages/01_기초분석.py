@@ -1,5 +1,24 @@
 import os
+import sys
+from pathlib import Path
+import platform
+import pyproj
 import streamlit as st
+
+# --- PROJ Data Directory Configuration (Cross-Platform Final Version) ---
+try:
+    conda_prefix = Path(sys.prefix)
+    if platform.system() == "Windows":
+        proj_data_dir = conda_prefix / "Library" / "share" / "proj"
+    else:
+        proj_data_dir = conda_prefix / "share" / "proj"
+
+    if proj_data_dir.exists():
+        pyproj.datadir.set_data_dir(str(proj_data_dir))
+except Exception:
+    pass
+# --- End of Configuration ---
+
 import streamlit.components.v1 as components
 import logging
 import traceback

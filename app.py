@@ -1,9 +1,8 @@
 import logging
 import os
-import platform
 import sys
 from pathlib import Path
-
+import platform
 import pyproj
 import streamlit as st
 
@@ -17,10 +16,11 @@ try:
 
     if proj_data_dir.exists():
         pyproj.datadir.set_data_dir(str(proj_data_dir))
-    # No else needed, pyproj will try its default finding mechanism.
-except Exception:
-    # Fails silently if something goes wrong, as it might not be a critical error.
-    pass
+        print(f"--- Pyproj data directory explicitly set to: {proj_data_dir} ---")
+    else:
+        print(f"--- CRITICAL WARNING: Pyproj data directory not found at {proj_data_dir}. CRS transformations may fail. ---")
+except Exception as e:
+    print(f"--- ERROR during pyproj configuration: {e} ---")
 # --- End of Configuration ---
 
 from utils.file_processor import validate_file

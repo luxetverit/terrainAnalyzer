@@ -1,21 +1,28 @@
-from utils.dem_processor import run_full_analysis
-from utils.config import get_db_engine
 import os
-import tempfile
-import time
-
-import geopandas as gpd
-import numpy as np
-import pandas as pd
-import rasterio
-import richdem as rd
+import sys
+from pathlib import Path
+import platform
+import pyproj
 import streamlit as st
-from rasterio.mask import mask
-from rasterio.transform import from_origin
-from scipy.interpolate import griddata
-from sqlalchemy import create_engine
+
+# --- PROJ Data Directory Configuration (Cross-Platform Final Version) ---
+try:
+    conda_prefix = Path(sys.prefix)
+    if platform.system() == "Windows":
+        proj_data_dir = conda_prefix / "Library" / "share" / "proj"
+    else:
+        proj_data_dir = conda_prefix / "share" / "proj"
+
+    if proj_data_dir.exists():
+        pyproj.datadir.set_data_dir(str(proj_data_dir))
+except Exception:
+    pass
+# --- End of Configuration ---
 
 from utils.theme_util import apply_styles
+import time
+import shutil
+from utils.dem_processor import process_dem_data, extract_dem_files
 
 # --- 1. Page Configuration and Styling ---
 st.set_page_config(page_title="분석 실행 - 지형 분석 서비스",
