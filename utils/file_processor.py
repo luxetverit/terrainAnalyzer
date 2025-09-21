@@ -1,213 +1,132 @@
-import streamlit as st
 import os
-import tempfile
-import geopandas as gpd
-import ezdxf
-from ezdxf.addons import geo
-from shapely.geometry import Polygon, MultiPolygon
+import shutil
 import tempfile
 import zipfile
-import shutil
+
+import ezdxf
+import geopandas as gpd
+import pandas as pd
+import streamlit as st
+from ezdxf.addons import geo
+from shapely.geometry import MultiPolygon, Polygon
 
 
 def validate_file(uploaded_file):
     """
-    Validate the uploaded file to ensure it is a valid DXF or ZIP (containing SHP) file.
-
-    Parameters:
-    -----------
-    uploaded_file : UploadedFile
-        The file uploaded by the user through Streamlit's file_uploader.
-
-    Returns:
-    --------
-    tuple
-        (is_valid, message, temp_file_path)
-        is_valid: bool - Whether the file is valid
-        message: str - A message explaining the validation result
-        temp_file_path: str - Path to the temporary file created
+    Validate the uploaded file. For ZIPs, it now returns the extraction directory.
     """
-    # Check file extension
     file_ext = os.path.splitext(uploaded_file.name)[1].lower()
 
     if file_ext not in [".dxf", ".zip"]:
-        return (
-            False,
-            "Invalid file type. Please upload a DXF file or ZIP file containing SHP files.",
-            None,
-        )
+        return (False, "Invalid file type. Please upload a DXF file or ZIP file.", None)
 
-    # Create a temporary file to save the uploaded content
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
     temp_file_path = temp_file.name
 
     try:
-        # Write uploaded file to the temporary file
         with open(temp_file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-        # Validate based on file type
         if file_ext == ".dxf":
             try:
-                # Try to load the DXF file
                 doc = ezdxf.readfile(temp_file_path)
-                # Basic check: ensure it has a modelspace
                 _ = doc.modelspace()
                 return True, "Valid DXF file", temp_file_path
             except Exception as e:
                 return False, f"Invalid DXF file: {str(e)}", None
 
         elif file_ext == ".zip":
+            extract_dir = tempfile.mkdtemp()
             try:
-                # Create a temporary directory to extract the ZIP contents
-                extract_dir = tempfile.mkdtemp()
-
-                # Extract the ZIP file
                 with zipfile.ZipFile(temp_file_path, "r") as zip_ref:
                     zip_ref.extractall(extract_dir)
 
-                # Look for SHP files in the extracted directory
-                shp_files = []
-                for root, dirs, files in os.walk(extract_dir):
-                    for file in files:
-                        if file.lower().endswith(".shp"):
-                            shp_files.append(os.path.join(root, file))
-
+                shp_files = [os.path.join(root, file) for root, _, files in os.walk(
+                    extract_dir) if file.lower().endswith(".shp")]
                 if not shp_files:
-                    # Clean up
                     shutil.rmtree(extract_dir)
                     return False, "No SHP files found in the ZIP archive", None
 
-                # Validate the first SHP file found
-                try:
-                    gdf = gpd.read_file(shp_files[0])
-                    if gdf.empty:
-                        shutil.rmtree(extract_dir)
-                        return False, "Empty shapefile found in ZIP", None
-
-                    # Return the path to the SHP file, not the ZIP file
-                    return True, "Valid shapefile found in ZIP", shp_files[0]
-                except Exception as e:
-                    shutil.rmtree(extract_dir)
-                    return False, f"Invalid shapefile in ZIP: {str(e)}", None
-
-            except zipfile.BadZipFile:
-                return False, "Invalid ZIP file", None
+                return True, "Valid shapefile found in ZIP", extract_dir
             except Exception as e:
+                if os.path.exists(extract_dir):
+                    shutil.rmtree(extract_dir)
                 return False, f"Error processing ZIP file: {str(e)}", None
-
-    except Exception as e:
+    finally:
         if os.path.exists(temp_file_path):
-            os.unlink(temp_file_path)
-        return False, f"Error processing file: {str(e)}", None
-
-    return True, "Valid file", temp_file_path
+            os.remove(temp_file_path)
 
 
 def process_uploaded_file(file_path, epsg_code):
     """
-    Process the uploaded file and extract closed polygons.
-
-    Parameters:
-    -----------
-    file_path : str
-        Path to the temporary file.
-    epsg_code : int
-        The EPSG code of the input file's coordinate system.
-
-    Returns:
-    --------
-    geopandas.GeoDataFrame
-        A GeoDataFrame containing the closed polygons.
+    Process the uploaded file or directory and extract closed polygons.
     """
-    file_ext = os.path.splitext(file_path)[1].lower()
+    if os.path.isdir(file_path):
+        return process_shp_directory(file_path, epsg_code)
 
+    file_ext = os.path.splitext(file_path)[1].lower()
     if file_ext == ".dxf":
         return process_dxf_file(file_path, epsg_code)
-    elif file_ext == ".shp":
-        return process_shp_file(file_path, epsg_code)
     else:
-        raise ValueError(f"Unsupported file extension: {file_ext}")
+        # This case might be for a single .shp file if you ever support that
+        return process_shp_file(file_path, epsg_code)
+
+
+def process_shp_directory(dir_path, epsg_code):
+    """
+    Process all SHP files in a directory, merge them, and extract polygons.
+    """
+    shp_files = [os.path.join(root, file) for root, _, files in os.walk(
+        dir_path) for file in files if file.lower().endswith(".shp")]
+    if not shp_files:
+        return None
+
+    gdfs = []
+    for f in shp_files:
+        try:
+            gdf = gpd.read_file(f)
+            if gdf.crs is None:
+                gdf.crs = f"EPSG:{epsg_code}"
+            gdfs.append(gdf)
+        except Exception as e:
+            print(f"Warning: Could not read file {f}: {e}")
+            continue
+
+    if not gdfs:
+        return None
+
+    merged_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True))
+    merged_gdf.crs = gdfs[0].crs
+
+    return process_shp_file(merged_gdf, epsg_code)
 
 
 def process_dxf_file(file_path, epsg_code):
     """
     Process a DXF file to extract closed polygons.
-
-    Parameters:
-    -----------
-    file_path : str
-        Path to the DXF file.
-    epsg_code : int
-        The EPSG code of the input file's coordinate system.
-
-    Returns:
-    --------
-    geopandas.GeoDataFrame
-        A GeoDataFrame containing the closed polygons.
     """
     try:
-        # Read DXF file
         doc = ezdxf.readfile(file_path)
         msp = doc.modelspace()
-
-        # List to store polygons
         polygons = []
 
-        # Extract closed polylines and convert to polygons
-        for entity in msp:
-            if entity.dxftype() == "LWPOLYLINE" or entity.dxftype() == "POLYLINE":
-                if entity.closed:
-                    # Extract vertices
-                    vertices = []
-                    if entity.dxftype() == "LWPOLYLINE":
-                        for vertex in entity.vertices():
-                            vertices.append((vertex[0], vertex[1]))
-                    else:  # POLYLINE
-                        for vertex in entity.vertices:
-                            vertices.append(
-                                (vertex.dxf.location[0], vertex.dxf.location[1])
-                            )
+        for entity in msp.query('LWPOLYLINE[closed==True], POLYLINE[closed==True]'):
+            vertices = [v[:2] for v in entity.vertices()]
+            if len(vertices) >= 3:
+                polygons.append(Polygon(vertices))
 
-                    # Create polygon if we have at least 3 vertices
+        for hatch in msp.query('HATCH'):
+            for path in hatch.paths:
+                if path.PATH_TYPE == 'PolylinePath':
+                    vertices = [v[:2] for v in path.vertices]
                     if len(vertices) >= 3:
-                        # Make sure the polygon is closed
-                        if vertices[0] != vertices[-1]:
-                            vertices.append(vertices[0])
+                        polygons.append(Polygon(vertices))
 
-                        # Create Shapely polygon
-                        polygon = Polygon(vertices)
-                        if polygon.is_valid:
-                            polygons.append(polygon)
-
-            elif entity.dxftype() == "HATCH":
-                # Extract boundary paths
-                for path in entity.paths:
-                    vertices = []
-                    for vertex in path.vertices:
-                        vertices.append((vertex[0], vertex[1]))
-
-                    # Create polygon if we have at least 3 vertices
-                    if len(vertices) >= 3:
-                        # Make sure the polygon is closed
-                        if vertices[0] != vertices[-1]:
-                            vertices.append(vertices[0])
-
-                        # Create Shapely polygon
-                        polygon = Polygon(vertices)
-                        if polygon.is_valid:
-                            polygons.append(polygon)
-
-        # Create GeoDataFrame
-        if polygons:
-            gdf = gpd.GeoDataFrame(geometry=polygons, crs=f"EPSG:{epsg_code}")
-
-            # Transform to EPSG:5179 for DEM analysis
-            gdf = gdf.to_crs("EPSG:5179")
-
-            return gdf
-        else:
+        if not polygons:
             return None
+
+        gdf = gpd.GeoDataFrame(geometry=polygons, crs=f"EPSG:{epsg_code}")
+        return process_shp_file(gdf, epsg_code)  # Re-use the main processor
 
     except Exception as e:
         raise ValueError(f"Error processing DXF file: {str(e)}")
@@ -215,53 +134,25 @@ def process_dxf_file(file_path, epsg_code):
 
 def process_shp_file(data, epsg_code):
     """
-    Process a SHP file or a GeoDataFrame to extract closed polygons.
+    Process a SHP file path or a GeoDataFrame to extract closed polygons.
     """
     try:
-        if isinstance(data, str):  # data is a file path
+        if isinstance(data, str):
             gdf = gpd.read_file(data)
-        elif isinstance(data, gpd.GeoDataFrame):  # data is already a GeoDataFrame
+        elif isinstance(data, gpd.GeoDataFrame):
             gdf = data
         else:
             raise TypeError("Input must be a file path or a GeoDataFrame.")
 
-        # Set CRS if not already set
         if gdf.crs is None:
             gdf.set_crs(epsg=epsg_code, inplace=True)
 
-        # Filter for polygon geometries
         gdf = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])]
-
-        # Filter for valid geometries
         gdf = gdf[gdf.geometry.is_valid]
-
-        # Transform to EPSG:5179 for DEM analysis
         gdf = gdf.to_crs("EPSG:5179")
 
-        if gdf.empty:
-            return None
-
-        return gdf
+        return gdf if not gdf.empty else None
 
     except Exception as e:
-        raise ValueError(f"Error processing SHP file: {str(e)}")
-t
-        if gdf.crs is None:
-            gdf.set_crs(epsg=epsg_code, inplace=True)
-
-        # Filter for polygon geometries
-        gdf = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])]
-
-        # Filter for valid geometries
-        gdf = gdf[gdf.geometry.is_valid]
-
-        # Transform to EPSG:5179 for DEM analysis
-        gdf = gdf.to_crs("EPSG:5179")
-
-        if gdf.empty:
-            return None
-
-        return gdf
-
-    except Exception as e:
-        raise ValueError(f"Error processing SHP file: {str(e)}")
+        raise ValueError(f"Error processing SHP data: {str(e)}")
+        raise ValueError(f"Error processing SHP data: {str(e)}")
