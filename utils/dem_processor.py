@@ -5,20 +5,21 @@
 """
 
 import os
-import zipfile
+import shutil
 import tempfile
+import zipfile
+from pathlib import Path
+
 import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from shapely.geometry import Polygon, MultiPolygon
 import rasterio
 from rasterio.mask import mask
-from scipy.ndimage import gaussian_filter
-import shutil
-from pathlib import Path
-from scipy.interpolate import griddata
 from rasterio.transform import from_origin
+from scipy.interpolate import griddata
+from scipy.ndimage import gaussian_filter
+from shapely.geometry import MultiPolygon, Polygon
 
 
 def interpolate_dem_from_points(gdf, elevation_field, pixel_size):
@@ -126,7 +127,8 @@ def extract_dem_files(zip_file_path, matching_mapsheet_codes):
         # ZIP 파일 열기
         with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
             # ZIP 파일 내의 SHP 파일 찾기
-            shp_files = [f for f in zip_ref.namelist() if f.lower().endswith(".shp")]
+            shp_files = [f for f in zip_ref.namelist(
+            ) if f.lower().endswith(".shp")]
 
             # 도엽 번호와 일치하는 SHP 파일 추출
             for shp_file in shp_files:
@@ -146,7 +148,8 @@ def extract_dem_files(zip_file_path, matching_mapsheet_codes):
                             if related_file in zip_ref.namelist():
                                 zip_ref.extract(related_file, temp_dir)
 
-                        extracted_files.append(os.path.join(temp_dir, shp_file))
+                        extracted_files.append(
+                            os.path.join(temp_dir, shp_file))
                         break
 
         return {"extracted_files": extracted_files, "temp_dir": temp_dir}
@@ -349,6 +352,7 @@ def create_dem_preview(dem_array, bounds, palette_key="terrain", title="표고 �
         생성된 도표
     """
     from matplotlib.colors import LinearSegmentedColormap
+
     from utils.color_palettes import ALL_PALETTES
 
     # 색상 팔레트 가져오기
@@ -359,7 +363,8 @@ def create_dem_preview(dem_array, bounds, palette_key="terrain", title="표고 �
         colors = ALL_PALETTES["terrain"]["colors"]
 
     # 색상 맵 생성
-    cmap = LinearSegmentedColormap.from_list(f"{palette_key}_cmap", colors, N=256)
+    cmap = LinearSegmentedColormap.from_list(
+        f"{palette_key}_cmap", colors, N=256)
 
     # 도표 생성 (비율 유지)
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -406,6 +411,7 @@ def create_slope_preview(slope_array, bounds, palette_key="terrain", title="경�
         생성된 도표
     """
     from matplotlib.colors import LinearSegmentedColormap
+
     from utils.color_palettes import ALL_PALETTES
 
     # 색상 팔레트 가져오기
@@ -416,7 +422,8 @@ def create_slope_preview(slope_array, bounds, palette_key="terrain", title="경�
         colors = ALL_PALETTES["spectral"]["colors"]
 
     # 색상 맵 생성
-    cmap = LinearSegmentedColormap.from_list(f"{palette_key}_cmap", colors, N=256)
+    cmap = LinearSegmentedColormap.from_list(
+        f"{palette_key}_cmap", colors, N=256)
 
     # 도표 생성 (비율 유지)
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -568,7 +575,8 @@ def process_dem_data(
         slope_stats = calculate_slope_statistics(slope_array)
 
         # 표고 미리보기 이미지
-        elevation_fig = create_dem_preview(dem_array, bounds, elevation_palette)
+        elevation_fig = create_dem_preview(
+            dem_array, bounds, elevation_palette)
 
         # 경사 미리보기 이미지
         slope_fig = create_slope_preview(slope_array, bounds, slope_palette)
@@ -610,6 +618,7 @@ def process_dem_data(
             "bounds": None,
         }
 
+
 def calculate_binned_stats(grid, num_bins=10):
     grid_flat = grid[~np.isnan(grid)]
     if grid_flat.size == 0:
@@ -622,6 +631,7 @@ def calculate_binned_stats(grid, num_bins=10):
         binned_stats.append(
             {"bin_range": f"{bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}", "area": hist[i]})
     return binned_stats
+
 
 def extract_points_from_geometries(gdf, elevation_col='elevation'):
     xs, ys, zs = [], [], []
@@ -655,6 +665,7 @@ def extract_points_from_geometries(gdf, elevation_col='elevation'):
                     zs.append(z)
     return np.array(xs), np.array(ys), np.array(zs)
 
+
 def get_pixel_size_from_db(engine, subbasin_name, default_size=1.0):
     """Fetches pixel size for a given sub-basin from the database."""
     try:
@@ -671,15 +682,18 @@ def get_pixel_size_from_db(engine, subbasin_name, default_size=1.0):
         # st.warning(f"Could not fetch pixel size from DB: {e}")
         return float(default_size)
 
+
 def calc_stats(array):
     arr = array[np.isfinite(array)]
     if arr.size == 0:
         return {'min': 0, 'max': 0, 'mean': 0, 'area': 0}
     return {'min': float(np.nanmin(arr)), 'max': float(np.nanmax(arr)), 'mean': float(np.nanmean(arr)), 'area': arr.size}
 
+
 def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
-    from utils.config import get_db_engine
     import richdem as rd
+
+    from utils.config import get_db_engine
 
     engine = get_db_engine()
     dem_results = {}
@@ -712,11 +726,13 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
     contour_gdf = gpd.read_postgis(sql, engine, geom_col='geometry')
 
     # --- Part 2: DEM and Raster Analysis ---
-    dem_needed = any(item in selected_types for item in ['elevation', 'slope', 'aspect'])
+    dem_needed = any(item in selected_types for item in [
+                     'elevation', 'slope', 'aspect'])
 
     if dem_needed:
         if contour_gdf.empty:
-            raise ValueError("표고 분석에 필요한 등고선 데이터를 데이터베이스에서 찾을 수 없습니다. 분석하려는 지역이 DB 서비스 범위를 벗어났을 수 있습니다.")
+            raise ValueError(
+                "표고 분석에 필요한 등고선 데이터를 데이터베이스에서 찾을 수 없습니다. 분석하려는 지역이 DB 서비스 범위를 벗어났을 수 있습니다.")
 
         contour_gdf = contour_gdf.to_crs(target_crs)
         xs, ys, zs = extract_points_from_geometries(contour_gdf, 'elevation')
@@ -725,12 +741,15 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
             raise ValueError("데이터베이스에서 추출한 등고선 데이터에 유효한 고도 포인트가 없습니다.")
 
         minx, miny, maxx, maxy = expanded_bounds
-        pixel_size = get_pixel_size_from_db(engine, subbasin_name, default_size=1.0)
-        
+        pixel_size = get_pixel_size_from_db(
+            engine, subbasin_name, default_size=1.0)
+
         grid_x, grid_y = np.mgrid[minx:maxx:pixel_size, miny:maxy:pixel_size]
 
-        dem_grid = griddata((xs, ys), zs, (grid_x, grid_y), method='linear', fill_value=np.nan)
-        transform = from_origin(expanded_bounds[0], expanded_bounds[3], pixel_size, pixel_size)
+        dem_grid = griddata((xs, ys), zs, (grid_x, grid_y),
+                            method='linear', fill_value=np.nan)
+        transform = from_origin(
+            expanded_bounds[0], expanded_bounds[3], pixel_size, pixel_size)
 
         with tempfile.NamedTemporaryFile(suffix='.tif', delete=False) as tmpfile:
             dem_tif_path = tmpfile.name
@@ -761,14 +780,16 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                     dst.write(aspect_arr, 1)
                 temp_files_to_clean['aspect'] = aspect_tif_path
 
-        clip_geoms = [g for g in user_gdf_reprojected.geometry if g.is_valid and not g.is_empty]
+        clip_geoms = [
+            g for g in user_gdf_reprojected.geometry if g.is_valid and not g.is_empty]
         if not clip_geoms:
             raise ValueError("클리핑에 사용할 유효한 폴리곤이 업로드된 파일에 없습니다.")
 
         for analysis_type, tif_path in temp_files_to_clean.items():
             if analysis_type in selected_types or (analysis_type == 'elevation' and dem_needed):
                 with rasterio.open(tif_path) as src:
-                    clipped_grid, _ = mask(src, clip_geoms, crop=True, nodata=np.nan)
+                    clipped_grid, _ = mask(
+                        src, clip_geoms, crop=True, nodata=np.nan)
                     clipped_grid = clipped_grid[0]
                     dem_results[analysis_type] = {
                         'grid': clipped_grid,
@@ -787,14 +808,17 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
 
         if 'soil' in selected_types:
             sql_soil = f"SELECT ST_Intersection(t1.geom, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_soil_map AS t1 WHERE ST_Intersects(t1.geom, ST_GeomFromText('{user_wkt}', 5186));"
-            dem_results['soil'] = {'gdf': gpd.read_postgis(sql_soil, engine, geom_col='geometry')}
+            dem_results['soil'] = {'gdf': gpd.read_postgis(
+                sql_soil, engine, geom_col='geometry')}
 
         if 'hsg' in selected_types:
             sql_hsg = f"SELECT ST_Intersection(t1.geom, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_hsg_map AS t1 WHERE ST_Intersects(t1.geom, ST_GeomFromText('{user_wkt}', 5186));"
-            dem_results['hsg'] = {'gdf': gpd.read_postgis(sql_hsg, engine, geom_col='geometry')}
+            dem_results['hsg'] = {'gdf': gpd.read_postgis(
+                sql_hsg, engine, geom_col='geometry')}
 
         if 'landcover' in selected_types:
             sql_landcover = f"SELECT ST_Intersection(t1.geom, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_landcover_map AS t1 WHERE ST_Intersects(t1.geom, ST_GeomFromText('{user_wkt}', 5186));"
-            dem_results['landcover'] = {'gdf': gpd.read_postgis(sql_landcover, engine, geom_col='geometry')}
+            dem_results['landcover'] = {'gdf': gpd.read_postgis(
+                sql_landcover, engine, geom_col='geometry')}
 
     return dem_results

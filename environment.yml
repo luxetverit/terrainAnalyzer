@@ -1,21 +1,23 @@
 name: ta
 channels:
-  - conda-forge
+    - conda-forge
+    - defaults
 dependencies:
-  - python=3.10
-  - gdal
-  - richdem
-  - streamlit
-  - geopandas
-  - ezdxf
-  - pandas
-  - matplotlib
-  - scipy
-  - rasterio
-  - sqlalchemy
-  - psycopg2
-  - pyvista
-  - requests
-  - pip
-  - pip:
-    - stpyvista==0.1.4
+    - python=3.10
+    - gdal
+    - richdem
+    - streamlit
+    - geopandas
+    - ezdxf
+    - pandas
+    - matplotlib
+    - scipy
+    - rasterio
+    - sqlalchemy
+    - psycopg2
+    - pyvista
+    - requests
+    - pip
+    - numpy
+    - pip:
+          - stpyvista==0.1.4
