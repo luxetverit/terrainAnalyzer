@@ -3,6 +3,16 @@ import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.patches as mpatches
 from utils.color_palettes import ALL_PALETTES
+import matplotlib as mpl
+
+# --- 한글 폰트 설정 ---
+# Linux 서버에 NanumGothic 폰트가 설치되어 있어야 합니다.
+# sudo apt-get install -y fonts-nanum*
+# 폰트 캐시를 다시 빌드해야 할 수도 있습니다.
+# import matplotlib.font_manager as fm
+# fm._rebuild()
+mpl.rcParams['font.family'] = 'NanumGothic'
+mpl.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
 
 
 def create_elevation_heatmap(elevation_array, bounds, stats, palette_key="terrain"):
