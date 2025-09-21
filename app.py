@@ -1,7 +1,9 @@
+import logging
 import os
+import platform
 import sys
 from pathlib import Path
-import platform
+
 import pyproj
 import streamlit as st
 
@@ -23,7 +25,6 @@ except Exception:
 
 from utils.file_processor import validate_file
 from utils.theme_util import apply_styles
-
 
 # --- 로깅 설정 ---
 logging.basicConfig(
@@ -95,7 +96,8 @@ if uploaded_file:
     with st.spinner("파일 유효성 검사 중..."):
         logging.info("validate_file 함수 호출 시작")
         is_valid, message, temp_file_path = validate_file(uploaded_file)
-        logging.info(f"validate_file 함수 반환: is_valid={is_valid}, message={message}")
+        logging.info(
+            f"validate_file 함수 반환: is_valid={is_valid}, message={message}")
 
     if is_valid:
         temp_file_path_for_next = temp_file_path
