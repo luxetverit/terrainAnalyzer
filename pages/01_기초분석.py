@@ -1,7 +1,8 @@
 import os
-
 import streamlit as st
 import streamlit.components.v1 as components
+import logging
+import traceback
 
 import utils.map_index_finder as map_index_finder
 from utils.file_processor import process_uploaded_file
@@ -45,16 +46,6 @@ if 'initial_analysis_done' not in st.session_state:
             st.session_state.matched_sheets = map_results.get(
                 'matched_sheets', [])
 
-            # --- Diagnostic Information ---
-            # st.markdown("---")
-            # st.info("진단 정보")
-            # st.json({
-            #     "입력 파일 좌표계 (EPSG)": epsg_code,
-            #     "찾은 도엽 개수": len(st.session_state.matched_sheets),
-            #     "찾은 도엽 번호 (최대 5개)": st.session_state.matched_sheets[:5]
-            # })
-            # st.markdown("---")
-
             from utils.config import KAKAO_API_KEY
             location_info = get_location_name(gdf, epsg_code, KAKAO_API_KEY)
             st.session_state.location_info = location_info
@@ -62,9 +53,29 @@ if 'initial_analysis_done' not in st.session_state:
             st.session_state.initial_analysis_done = True
 
         except Exception as e:
-            st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
-            if st.button("다시 시도하기"):
-                del st.session_state.initial_analysis_done
+            # Log the full traceback to the terminal
+            tb_str = traceback.format_exc()
+            logging.error("An error occurred during file processing.")
+            logging.error(tb_str)
+
+            # Display a detailed error message in the Streamlit app
+            st.error(f"""파일 처리 중 심각한 오류가 발생했습니다.
+
+**오류 내용:**
+```
+{e}
+```
+
+**상세 정보 (터미널 로그 확인):**
+```
+{tb_str}
+```
+""")
+            if st.button("홈으로 돌아가기"):
+                # Clear session state to allow for a fresh start
+                for key in list(st.session_state.keys()):
+                    if key != 'upload_counter':
+                        del st.session_state[key]
                 st.switch_page("app.py")
             st.stop()
 
