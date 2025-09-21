@@ -1,0 +1,23 @@
+.stApp { background-color: #FFFFFF; color: #31333F; }
+header[data-testid="stHeader"] { display: none !important; }
+h1, h2, h3, h4, h5, h6, p, li { color: #31333F !important; }
+[data-testid="stFileUploader"] { background-color: #F9F9F9 !important; border: 2px dashed #555 !important; border-radius: 8px !important; padding: 60px 20px !important; color: #333 !important; }
+[data-testid="stFileUploader"] section span { color: #333 !important; }
+[data-testid="stFileUploader"] section { background-color: #F9F9F9 !important; }
+[data-testid="stFileUploader"] div { background-color: #F9F9F9 !important; }
+[data-testid="stFileUploader"] p { color: #333 !important; background-color: #F9F9F9 !important; }
+[data-testid="stFileUploader"] label { color: #333 !important; background-color: #F9F9F9 !important; }
+.css-90vs21, .css-1q7744g, .css-8ojfln p, .css-1r6slb0 { color: #333 !important; background-color: #F9F9F9 !important; }
+.stButton button { background-color: white !important; color: black !important; border: 2px solid black !important; }
+.css-1qrvfrg, .css-1s2u09g { border: none !important; background-color: transparent !important; box-shadow: none !important; }
+div.stSelectbox { border: none !important; background-color: white !important; }
+div.stSelectbox > div > div { border: 2px solid black !important; border-radius: 4px !important; background-color: white !important; }
+div[data-baseweb="select"] { background-color: white !important; border: none !important; }
+div[data-baseweb="select"] * { color: black !important; background-color: white !important; }
+div[data-baseweb="select"] span { color: black !important; background-color: white !important; }
+div[data-baseweb="popover"] { background-color: white !important; }
+div[data-baseweb="popover"] * { color: black !important; background-color: white !important; }
+div[data-baseweb="popover"] div { background-color: white !important; }
+div[role="listbox"] { background-color: white !important; }
+div[role="listbox"] * { background-color: white !important; color: black !important; }
+div[data-testid="stToggleButton"] > label { color: white !important; text-shadow: 0px 0px 1px black !important; }

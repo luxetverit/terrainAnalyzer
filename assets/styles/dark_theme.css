@@ -1,0 +1,12 @@
+.stApp { background-color: #0E1117; color: #FAFAFA; }
+header[data-testid="stHeader"] { display: none !important; }
+.uploadedFile { all: unset !important; width: 100% !important; height: auto !important; min-height: 300px !important; background-color: #1E1E1E !important; border: 2px dashed #4F8BF9 !important; border-radius: 8px !important; padding: 80px 20px !important; box-sizing: border-box !important; display: block !important; }
+.uploadedFile p, .uploadedFile span, .uploadedFile div { color: #FAFAFA !important; }
+.css-1kyxreq { background-color: #262730 !important; }
+.stButton button { background-color: #4F8BF9 !important; color: white !important; }
+div[data-baseweb="select"] { background-color: #262730 !important; }
+div[data-baseweb="select"] * { color: #FAFAFA !important; }
+div[data-baseweb="select"] span { color: #FAFAFA !important; }
+div[data-baseweb="popover"] { background-color: #262730 !important; }
+div[data-baseweb="popover"] * { color: #FAFAFA !important; }
+div.row-widget.stToggleButton { top: 12px; }

@@ -1,13 +1,12 @@
-import os
-
 import streamlit as st
 import streamlit.components.v1 as components
-
-import utils.map_index_finder as map_index_finder
+import os
 from utils.file_processor import process_uploaded_file
+from utils.dem_analyzer import analyze_elevation
 from utils.region_finder import get_region_info
 from utils.simple_address_finder import get_location_name
 from utils.theme_util import apply_styles
+import utils.map_index_finder as map_index_finder
 
 # --- 1. Page Configuration and Styling ---
 st.set_page_config(page_title="기초 분석 - 지형 분석 서비스",
@@ -46,17 +45,18 @@ if 'initial_analysis_done' not in st.session_state:
                 'matched_sheets', [])
 
             # --- Diagnostic Information ---
-            # st.markdown("---")
-            # st.info("진단 정보")
-            # st.json({
-            #     "입력 파일 좌표계 (EPSG)": epsg_code,
-            #     "찾은 도엽 개수": len(st.session_state.matched_sheets),
-            #     "찾은 도엽 번호 (최대 5개)": st.session_state.matched_sheets[:5]
-            # })
-            # st.markdown("---")
+            st.markdown("---")
+            st.info("진단 정보")
+            st.json({
+                "입력 파일 좌표계 (EPSG)": epsg_code,
+                "찾은 도엽 개수": len(st.session_state.matched_sheets),
+                "찾은 도엽 번호 (최대 5개)": st.session_state.matched_sheets[:5]
+            })
+            st.markdown("---")
 
-            from utils.config import KAKAO_API_KEY
-            location_info = get_location_name(gdf, epsg_code, KAKAO_API_KEY)
+            # Get location info (You may want to secure this key)
+            kakao_api_key = "bc9e52aa60d3c71a19742019b5ca3eaf"
+            location_info = get_location_name(gdf, epsg_code, kakao_api_key)
             st.session_state.location_info = location_info
 
             st.session_state.initial_analysis_done = True
@@ -90,10 +90,9 @@ lat = loc_info.get('lat')
 lon = loc_info.get('lon')
 
 if lat and lon:
-    with st.expander("🗺️ 위치 개요도 보기"):
-        map_url = f"https://map.kakao.com/link/map/분석지역,{lat},{lon}"
-        components.html(
-            f'<iframe src="{map_url}" width="100%" height="400" style="border:none;"></iframe>', height=410)
+    st.markdown("##### 🗺️ 위치 개요도")
+    map_url = f"https://map.kakao.com/link/map/분석지역,{lat},{lon}"
+    components.html(f'<iframe src="{map_url}" width="100%" height="400" style="border:none;"></iframe>', height=410)
 
 st.markdown(f"#### 🗺️ 관련 도엽 번호 ({len(map_sheets)}개)")
 if map_sheets:
@@ -111,25 +110,36 @@ else:
 # --- 5. Analysis Options Selection ---
 st.markdown("### 분석 항목 선택")
 
-analysis_items = {
-    "표고 분석": "elevation",
-    "경사 분석": "slope",
-    "경사향 분석": "aspect",
-    "토지이용 현황": "landcover",
-    "토양도": "soil",
-    "수문학적 토양군": "hsg",
+dem_items = {
+    "elevation": "표고 분석",
+    "slope": "경사 분석",
+    "aspect": "경사향 분석",
+}
+db_items = {
+    "landcover": "토지이용 현황",
+    "soil": "토양도",
+    "hsg": "수문학적 토양군",
 }
 
-# Create a list of options for the radio button
-option_labels = list(analysis_items.keys())
+# Combine for session state initialization
+analysis_items = {**dem_items, **db_items}
+if 'selected_analysis' not in st.session_state:
+    st.session_state.selected_analysis = {key: False for key in analysis_items}
 
-# Use st.radio for single selection
-selected_label = st.radio(
-    "분석할 항목을 하나만 선택해주세요.",
-    options=option_labels,
-    index=0,  # Default to the first item
-    horizontal=True,
-)
+st.markdown("##### DEM 기반 분석 (지형 형태)")
+cols1 = st.columns(3)
+for i, (key, name) in enumerate(dem_items.items()):
+    with cols1[i]:
+        st.session_state.selected_analysis[key] = st.toggle(
+            name, value=st.session_state.selected_analysis.get(key, False), key=key)
+
+st.markdown("---")
+st.markdown("##### 데이터베이스 중첩 분석 (영역 특성)")
+cols2 = st.columns(3)
+for i, (key, name) in enumerate(db_items.items()):
+    with cols2[i]:
+        st.session_state.selected_analysis[key] = st.toggle(
+            name, value=st.session_state.selected_analysis.get(key, False), key=key)
 
 # --- 6. Navigation ---
 col1, col2 = st.columns(2)
@@ -143,10 +153,10 @@ with col1:
 
 with col2:
     if st.button("선택한 항목으로 분석 진행", type="primary", use_container_width=True):
-        if selected_label:
-            # Get the key corresponding to the selected label
-            selected_key = analysis_items[selected_label]
-            st.session_state.selected_analysis_types = [selected_key]
-            st.switch_page("pages/03_처리중.py")
+        selected_count = sum(st.session_state.selected_analysis.values())
+        if selected_count > 0:
+            st.session_state.selected_analysis_types = [
+                k for k, v in st.session_state.selected_analysis.items() if v]
+            st.switch_page("pages/02_분석옵션.py")
         else:
-            st.warning("분석 항목을 선택해주세요.")
+            st.warning("하나 이상의 분석 항목을 선택해주세요.")
