@@ -218,9 +218,9 @@ def process_shp_file(data, epsg_code):
     Process a SHP file or a GeoDataFrame to extract closed polygons.
     """
     try:
-        if isinstance(data, str): # data is a file path
+        if isinstance(data, str):  # data is a file path
             gdf = gpd.read_file(data)
-        elif isinstance(data, gpd.GeoDataFrame): # data is already a GeoDataFrame
+        elif isinstance(data, gpd.GeoDataFrame):  # data is already a GeoDataFrame
             gdf = data
         else:
             raise TypeError("Input must be a file path or a GeoDataFrame.")
