@@ -786,15 +786,15 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
         user_wkt = user_geom.wkt
 
         if 'soil' in selected_types:
-            sql_soil = f"SELECT ST_Intersection(t1.geom, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_soil_map AS t1 WHERE ST_Intersects(t1.geom, ST_GeomFromText('{user_wkt}', 5186));"
+            sql_soil = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_soil_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
             dem_results['soil'] = {'gdf': gpd.read_postgis(sql_soil, engine, geom_col='geometry')}
 
         if 'hsg' in selected_types:
-            sql_hsg = f"SELECT ST_Intersection(t1.geom, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_hsg_map AS t1 WHERE ST_Intersects(t1.geom, ST_GeomFromText('{user_wkt}', 5186));"
+            sql_hsg = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_hsg_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
             dem_results['hsg'] = {'gdf': gpd.read_postgis(sql_hsg, engine, geom_col='geometry')}
 
         if 'landcover' in selected_types:
-            sql_landcover = f"SELECT ST_Intersection(t1.geom, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_landcover_map AS t1 WHERE ST_Intersects(t1.geom, ST_GeomFromText('{user_wkt}', 5186));"
+            sql_landcover = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', 5186)) AS geometry, t1.* FROM public.kr_landcover_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
             dem_results['landcover'] = {'gdf': gpd.read_postgis(sql_landcover, engine, geom_col='geometry')}
 
     return dem_results

@@ -1,19 +1,29 @@
 import os
 import sys
 from pathlib import Path
+import platform
 import pyproj
-
-# PROJ 데이터 디렉토리 설정 (Conda 환경용)
-proj_data_dir = Path(sys.prefix) / "Library" / "share" / "proj"
-if proj_data_dir.exists():
-    pyproj.datadir.set_data_dir(str(proj_data_dir))
-
 import streamlit as st
-import logging
-import sys
+
+# --- PROJ Data Directory Configuration (Cross-Platform Final Version) ---
+try:
+    conda_prefix = Path(sys.prefix)
+    if platform.system() == "Windows":
+        proj_data_dir = conda_prefix / "Library" / "share" / "proj"
+    else:
+        proj_data_dir = conda_prefix / "share" / "proj"
+
+    if proj_data_dir.exists():
+        pyproj.datadir.set_data_dir(str(proj_data_dir))
+    # No else needed, pyproj will try its default finding mechanism.
+except Exception:
+    # Fails silently if something goes wrong, as it might not be a critical error.
+    pass
+# --- End of Configuration ---
 
 from utils.file_processor import validate_file
 from utils.theme_util import apply_styles
+
 
 # --- 로깅 설정 ---
 logging.basicConfig(
