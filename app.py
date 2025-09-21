@@ -9,9 +9,18 @@ if proj_data_dir.exists():
     pyproj.datadir.set_data_dir(str(proj_data_dir))
 
 import streamlit as st
+import logging
+import sys
 
 from utils.file_processor import validate_file
 from utils.theme_util import apply_styles
+
+# --- 로깅 설정 ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
+)
 
 # --- 1. Page Configuration and Styling ---
 st.set_page_config(
@@ -72,8 +81,11 @@ epsg_code = epsg_options[selected_epsg_name]
 # --- 5. File Processing and Navigation ---
 temp_file_path_for_next = None
 if uploaded_file:
+    logging.info(f"--- 파일 업로드 감지: {uploaded_file.name} ---")
     with st.spinner("파일 유효성 검사 중..."):
+        logging.info("validate_file 함수 호출 시작")
         is_valid, message, temp_file_path = validate_file(uploaded_file)
+        logging.info(f"validate_file 함수 반환: is_valid={is_valid}, message={message}")
 
     if is_valid:
         temp_file_path_for_next = temp_file_path

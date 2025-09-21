@@ -8,6 +8,7 @@ from shapely.geometry import Polygon, MultiPolygon
 import tempfile
 import zipfile
 import shutil
+import logging
 
 
 def validate_file(uploaded_file):
@@ -45,63 +46,84 @@ def validate_file(uploaded_file):
         # Write uploaded file to the temporary file
         with open(temp_file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
+        logging.info(f"업로드된 파일을 임시 파일에 저장: {temp_file_path}")
 
         # Validate based on file type
         if file_ext == ".dxf":
+            logging.info("DXF 파일 유효성 검사 시작")
             try:
                 # Try to load the DXF file
                 doc = ezdxf.readfile(temp_file_path)
                 # Basic check: ensure it has a modelspace
                 _ = doc.modelspace()
+                logging.info("DXF 파일 유효성 검사 성공")
                 return True, "Valid DXF file", temp_file_path
             except Exception as e:
+                logging.exception("DXF 파일 처리 중 오류 발생")
                 return False, f"Invalid DXF file: {str(e)}", None
 
         elif file_ext == ".zip":
+            logging.info("ZIP 파일 유효성 검사 시작")
+            extract_dir = None  # Initialize here
             try:
                 # Create a temporary directory to extract the ZIP contents
                 extract_dir = tempfile.mkdtemp()
+                logging.info(f"ZIP 압축 해제를 위한 임시 디렉토리 생성: {extract_dir}")
 
                 # Extract the ZIP file
                 with zipfile.ZipFile(temp_file_path, "r") as zip_ref:
                     zip_ref.extractall(extract_dir)
+                logging.info("ZIP 파일 압축 해제 완료")
 
                 # Look for SHP files in the extracted directory
                 shp_files = []
                 for root, dirs, files in os.walk(extract_dir):
                     for file in files:
                         if file.lower().endswith(".shp"):
-                            shp_files.append(os.path.join(root, file))
+                            shp_path = os.path.join(root, file)
+                            shp_files.append(shp_path)
+                            logging.info(f"SHP 파일 발견: {shp_path}")
 
                 if not shp_files:
                     # Clean up
                     shutil.rmtree(extract_dir)
-                    return False, "No SHP files found in the ZIP archive", None
+                    message = "No SHP files found in the ZIP archive"
+                    logging.warning(message)
+                    return False, message, None
 
                 # Validate the first SHP file found
+                logging.info(f"첫 번째 SHP 파일 유효성 검사 시작: {shp_files[0]}")
                 try:
                     gdf = gpd.read_file(shp_files[0])
                     if gdf.empty:
                         shutil.rmtree(extract_dir)
-                        return False, "Empty shapefile found in ZIP", None
+                        message = "Empty shapefile found in ZIP"
+                        logging.warning(message)
+                        return False, message, None
 
+                    logging.info("SHP 파일 유효성 검사 성공")
                     # Return the path to the SHP file, not the ZIP file
                     return True, "Valid shapefile found in ZIP", shp_files[0]
                 except Exception as e:
+                    logging.exception("SHP 파일 처리 중 오류 발생")
                     shutil.rmtree(extract_dir)
                     return False, f"Invalid shapefile in ZIP: {str(e)}", None
 
-            except zipfile.BadZipFile:
+            except zipfile.BadZipFile as e:
+                logging.exception("잘못된 ZIP 파일 형식")
                 return False, "Invalid ZIP file", None
             except Exception as e:
+                logging.exception("ZIP 파일 처리 중 오류 발생")
+                if extract_dir and os.path.exists(extract_dir):
+                    shutil.rmtree(extract_dir)
                 return False, f"Error processing ZIP file: {str(e)}", None
 
     except Exception as e:
-        if os.path.exists(temp_file_path):
+        logging.exception("파일 처리 중 예상치 못한 오류 발생")
+        if temp_file_path and os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
-        return False, f"Error processing file: {str(e)}", None
+        return False, f"An unexpected error occurred: {str(e)}", None
 
-    return True, "Valid file", temp_file_path
 
 
 def process_uploaded_file(file_path, epsg_code):
