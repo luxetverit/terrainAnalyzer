@@ -20,7 +20,9 @@ from utils.theme_util import apply_styles
 if platform.system() == 'Windows':
     plt.rc('font', family='Malgun Gothic')
 else:
-    plt.rc('font', family='AppleGothic')
+    # For Linux, ensure 'NanumGothic' is installed.
+    # sudo apt-get install -y fonts-nanum*
+    plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
 # --- 1. Page Configuration and Styling ---
