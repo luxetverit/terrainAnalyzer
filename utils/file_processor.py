@@ -213,27 +213,39 @@ def process_dxf_file(file_path, epsg_code):
         raise ValueError(f"Error processing DXF file: {str(e)}")
 
 
-def process_shp_file(file_path, epsg_code):
+def process_shp_file(data, epsg_code):
     """
-    Process a SHP file to extract closed polygons.
-
-    Parameters:
-    -----------
-    file_path : str
-        Path to the SHP file.
-    epsg_code : int
-        The EPSG code of the input file's coordinate system.
-
-    Returns:
-    --------
-    geopandas.GeoDataFrame
-        A GeoDataFrame containing the closed polygons.
+    Process a SHP file or a GeoDataFrame to extract closed polygons.
     """
     try:
-        # Read shapefile
-        gdf = gpd.read_file(file_path)
+        if isinstance(data, str): # data is a file path
+            gdf = gpd.read_file(data)
+        elif isinstance(data, gpd.GeoDataFrame): # data is already a GeoDataFrame
+            gdf = data
+        else:
+            raise TypeError("Input must be a file path or a GeoDataFrame.")
 
         # Set CRS if not already set
+        if gdf.crs is None:
+            gdf.set_crs(epsg=epsg_code, inplace=True)
+
+        # Filter for polygon geometries
+        gdf = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])]
+
+        # Filter for valid geometries
+        gdf = gdf[gdf.geometry.is_valid]
+
+        # Transform to EPSG:5179 for DEM analysis
+        gdf = gdf.to_crs("EPSG:5179")
+
+        if gdf.empty:
+            return None
+
+        return gdf
+
+    except Exception as e:
+        raise ValueError(f"Error processing SHP file: {str(e)}")
+t
         if gdf.crs is None:
             gdf.set_crs(epsg=epsg_code, inplace=True)
 
