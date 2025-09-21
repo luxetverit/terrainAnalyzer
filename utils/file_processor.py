@@ -41,12 +41,17 @@ def validate_file(uploaded_file):
                 with zipfile.ZipFile(temp_file_path, "r") as zip_ref:
                     zip_ref.extractall(extract_dir)
 
-                shp_files = [os.path.join(root, file) for root, _, files in os.walk(
-                    extract_dir) if file.lower().endswith(".shp")]
+                # Correctly find shapefiles within the extracted directory
+                shp_files = []
+                for root, _, files in os.walk(extract_dir):
+                    for file in files:
+                        if file.lower().endswith(".shp"):
+                            shp_files.append(os.path.join(root, file))
+
                 if not shp_files:
                     shutil.rmtree(extract_dir)
                     return False, "No SHP files found in the ZIP archive", None
-
+                
                 return True, "Valid shapefile found in ZIP", extract_dir
             except Exception as e:
                 if os.path.exists(extract_dir):
@@ -55,7 +60,6 @@ def validate_file(uploaded_file):
     finally:
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
-
 
 def process_uploaded_file(file_path, epsg_code):
     """
