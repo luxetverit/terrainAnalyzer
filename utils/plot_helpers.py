@@ -1,12 +1,13 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.patches import Polygon, Rectangle
 
 # --- Constants for Plotting ---
 INTERVAL_CANDIDATES = [1, 2, 3, 5, 10, 15, 20, 25, 50, 100, 150, 200, 500]
 
 # --- Plotting Helper Functions ---
+
 
 def add_north_arrow(ax, x=0.95, y=0.95, size=0.05):
     """Adds a compass-style north arrow to the top-right of the Axes."""
@@ -19,6 +20,7 @@ def add_north_arrow(ax, x=0.95, y=0.95, size=0.05):
     ax.text(x, y + size*0.2, 'N', ha='center', va='center',
             fontsize='large', fontweight='bold', transform=ax.transAxes)
 
+
 def add_scalebar_vector(ax, dx=1.0):
     """Adds a scale bar and ratio to the bottom-left of the Axes (for vector plots)."""
     x_min, x_max = ax.get_xlim()
@@ -27,8 +29,10 @@ def add_scalebar_vector(ax, dx=1.0):
     target_length = map_width_m * 0.5
     powers = 10**np.floor(np.log10(target_length))
     base = np.ceil(target_length / powers)
-    if base > 5: base = 5
-    elif base > 2: base = 2
+    if base > 5:
+        base = 5
+    elif base > 2:
+        base = 2
     nice_len_m = base * powers
     num_segments = 4
     segment_m = nice_len_m / num_segments
@@ -45,6 +49,7 @@ def add_scalebar_vector(ax, dx=1.0):
                 ha='center', va='top', fontsize='small', zorder=10)
     ax.text(x_pos + nice_len_m / dx, y_pos - bar_height*0.5, f'{int(nice_len_m)} m',
             ha='center', va='top', fontsize='small', zorder=10)
+
 
 def calculate_accurate_scalebar_params(pixel_size, img_shape, target_size_mm, fig, ax):
     """Calculates accurate scale bar parameters using actual axes information."""
@@ -74,6 +79,7 @@ def calculate_accurate_scalebar_params(pixel_size, img_shape, target_size_mm, fi
         'scalebar_width_fig': (scale_distance_m / pixel_size) / pixels_per_inch / fig_width_inch
     }
 
+
 def draw_accurate_scalebar(fig, ax, pixel_size, scale_params, img_shape):
     """Draws an accurate scale bar."""
     total_length, units, segments = scale_params['length'], scale_params['units'], scale_params['segments']
@@ -96,15 +102,19 @@ def draw_accurate_scalebar(fig, ax, pixel_size, scale_params, img_shape):
         text_x_fig = start_x_fig + i * segment_width_fig
         text_y_fig = start_y_fig + bar_height_fig * 2 + 0.005
         segment_val = i * (total_length / segments)
-        text_label = f'{segment_val:.1f}' if units == 'km' and segment_val != int(segment_val) else f'{int(segment_val)}'
-        if i == segments: text_label += units
+        text_label = f'{segment_val:.1f}' if units == 'km' and segment_val != int(
+            segment_val) else f'{int(segment_val)}'
+        if i == segments:
+            text_label += units
         fig.text(text_x_fig, text_y_fig, text_label, ha='center', va='bottom',
                  fontsize=9, fontweight='bold', color='black', transform=fig.transFigure)
+
 
 def create_hillshade(data, azimuth=315, altitude=45):
     """Creates a high-quality hillshade from elevation data."""
     valid_mask = ~np.isnan(data)
-    if not np.any(valid_mask): return np.ones_like(data) * 0.5
+    if not np.any(valid_mask):
+        return np.ones_like(data) * 0.5
     dy, dx = np.gradient(data)
     slope = np.arctan(np.sqrt(dx**2 + dy**2))
     aspect = np.arctan2(-dx, dy)
@@ -116,10 +126,12 @@ def create_hillshade(data, azimuth=315, altitude=45):
     hillshade[~valid_mask] = 0.5
     return hillshade
 
+
 def create_padded_fig_ax(figsize=(10, 10)):
     """Creates a Figure and Axes with padding."""
     fig, ax = plt.subplots(figsize=figsize)
     return fig, ax
+
 
 def generate_custom_intervals(min_val, max_val, divisions):
     """Generates custom numerical bins and matching string labels for elevation legends."""
@@ -130,12 +142,14 @@ def generate_custom_intervals(min_val, max_val, divisions):
     diff = max_val - min_val
     div = divisions - 2 or 1
     target_interval = diff / div
-    best_interval = min(INTERVAL_CANDIDATES, key=lambda x: abs(x - target_interval))
+    best_interval = min(INTERVAL_CANDIDATES,
+                        key=lambda x: abs(x - target_interval))
     for candidate in sorted(INTERVAL_CANDIDATES, key=lambda x: abs(x - target_interval)):
         if candidate * div > diff * 0.5:
             best_interval = candidate
             break
-    start = round((min_val + diff / 2) / best_interval) * best_interval - best_interval * (div // 2)
+    start = round((min_val + diff / 2) / best_interval) * \
+        best_interval - best_interval * (div // 2)
     bins = [start + i * best_interval for i in range(div + 1)]
     final_bins = [float('-inf')] + bins + [float('inf')]
     labels = [f"{bins[0]:.0f}m 미만"]
@@ -146,9 +160,10 @@ def generate_custom_intervals(min_val, max_val, divisions):
         return final_bins, [f"범례 {i+1}" for i in range(divisions)]
     return final_bins, labels
 
+
 def generate_slope_intervals(num_divisions=5):
     """Generates standard bins and labels for slope analysis."""
-    full_labels = ["평탄", "완경사", "급경사", "매우 급경사", "험준"]
+    # full_labels = ["평탄", "완경사", "급경사", "매우 급경사", "험준"]
     bins = np.linspace(0, 60, num_divisions).tolist() + [90]
     labels = []
     for i in range(len(bins) - 1):
@@ -156,20 +171,25 @@ def generate_slope_intervals(num_divisions=5):
             label_text = f"{bins[i]:.0f}-{bins[i+1]:.0f}°"
         else:
             label_text = f"{bins[i]:.0f}°+"
-        if i < len(full_labels):
-            label_text += f" ({full_labels[i]})"
+        # if i < len(full_labels):
+        #    label_text += f" ({full_labels[i]})"
         labels.append(label_text)
     return bins, labels
 
+
 def generate_aspect_bins():
     """Generates standard bins for aspect analysis."""
-    bins = [-2, -0.5, 22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5, 360]
+    bins = [-2, -0.5, 22.5, 67.5, 112.5,
+            157.5, 202.5, 247.5, 292.5, 337.5, 360]
     return bins
+
 
 def adjust_ax_limits(ax, y_pad_fraction=0.15, x_pad_fraction=0.05):
     """Expands the Axes limits to create padding."""
     x_min, x_max = ax.get_xlim()
     y_min, y_max = ax.get_ylim()
     x_range, y_range = x_max - x_min, y_max - y_min
-    ax.set_xlim(x_min - x_range * x_pad_fraction, x_max + x_range * x_pad_fraction)
-    ax.set_ylim(y_min - y_range * y_pad_fraction, y_max + y_range * y_pad_fraction)
+    ax.set_xlim(x_min - x_range * x_pad_fraction,
+                x_max + x_range * x_pad_fraction)
+    ax.set_ylim(y_min - y_range * y_pad_fraction,
+                y_max + y_range * y_pad_fraction)
