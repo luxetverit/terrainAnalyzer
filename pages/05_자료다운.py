@@ -12,6 +12,7 @@ import streamlit as st
 from matplotlib.colors import BoundaryNorm, LightSource, ListedColormap
 from matplotlib.patches import Polygon, Rectangle
 from scipy.interpolate import griddata
+from scipy.ndimage import zoom
 from stpyvista import stpyvista
 
 from utils.color_palettes import get_landcover_colormap
@@ -416,6 +417,13 @@ else:
             # [OPTIMIZATION 1] Halve memory usage of the grid by changing data type
             if grid is not None:
                 grid = grid.astype(np.float32)
+
+                # [OPTIMIZATION 2] Dynamic Downsampling for very large grids
+                PIXEL_THRESHOLD = 5_000_000  # Approx 2500x2000 image
+                if grid.size > PIXEL_THRESHOLD:
+                    downsample_factor = (PIXEL_THRESHOLD / grid.size) ** 0.5
+                    st.info(f"ℹ️ 분석 영역이 매우 커서 시각화 해상도를 원본의 {downsample_factor:.1%}로 자동 조정합니다.")
+                    grid = zoom(grid, downsample_factor, order=1) # order=1 for bilinear interpolation
 
             if stats:
                 st.markdown("#### 요약 통계")
