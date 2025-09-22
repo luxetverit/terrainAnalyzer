@@ -5,9 +5,6 @@ from matplotlib.patches import Polygon, Rectangle
 
 # --- Constants for Plotting ---
 INTERVAL_CANDIDATES = [1, 2, 3, 5, 10, 15, 20, 25, 50, 100, 150, 200, 500]
-ELEVATION_COLORS = {
-    10: ['#66CDAA', '#DDF426', '#71B800', '#558C00', '#F29300', '#981200', '#9C1C1C', '#955050', '#9C9B9B', '#FFFAFA']
-}
 
 # --- Plotting Helper Functions ---
 
@@ -26,7 +23,6 @@ def add_scalebar_vector(ax, dx=1.0):
     """Adds a scale bar and ratio to the bottom-left of the Axes (for vector plots)."""
     x_min, x_max = ax.get_xlim()
     y_min, y_max = ax.get_ylim()
-
     map_width_m = (x_max - x_min) * dx
     target_length = map_width_m * 0.5
     powers = 10**np.floor(np.log10(target_length))
@@ -34,15 +30,12 @@ def add_scalebar_vector(ax, dx=1.0):
     if base > 5: base = 5
     elif base > 2: base = 2
     nice_len_m = base * powers
-
     num_segments = 4
     segment_m = nice_len_m / num_segments
     segment_data = segment_m / dx
     bar_height = (y_max - y_min) * 0.01
-
     x_pos = x_min + (x_max - x_min) * 0.05
     y_pos = y_min + (y_max - y_min) * 0.05
-
     for i in range(num_segments):
         color = 'black' if i % 2 == 0 else 'white'
         rect = Rectangle((x_pos + i * segment_data, y_pos), segment_data, bar_height,
@@ -50,7 +43,6 @@ def add_scalebar_vector(ax, dx=1.0):
         ax.add_patch(rect)
         ax.text(x_pos + i * segment_data, y_pos - bar_height*0.5, f'{int(i * segment_m)}',
                 ha='center', va='top', fontsize='small', zorder=10)
-
     ax.text(x_pos + nice_len_m / dx, y_pos - bar_height*0.5, f'{int(nice_len_m)} m',
             ha='center', va='top', fontsize='small', zorder=10)
 
@@ -63,7 +55,6 @@ def calculate_accurate_scalebar_params(pixel_size, img_shape, target_size_mm, fi
     pixels_per_inch = img_width_pixels / img_width_inch
     target_pixels = (target_size_mm / 25.4) * pixels_per_inch
     real_distance_m = target_pixels * pixel_size
-
     if real_distance_m < 100:
         scale_distance_m = round(real_distance_m / 50) * 50 or 50
         unit, scale_value = 'm', scale_distance_m
@@ -78,7 +69,6 @@ def calculate_accurate_scalebar_params(pixel_size, img_shape, target_size_mm, fi
         scale_distance_km = round(real_distance_m / 1000)
         scale_distance_m = scale_distance_km * 1000
         unit, scale_value = 'km', scale_distance_km
-
     return {
         'length': scale_value, 'units': unit, 'segments': 2,
         'scalebar_width_fig': (scale_distance_m / pixel_size) / pixels_per_inch / fig_width_inch
@@ -89,12 +79,10 @@ def draw_accurate_scalebar(fig, ax, pixel_size, scale_params, img_shape):
     total_length, units, segments = scale_params['length'], scale_params['units'], scale_params['segments']
     scalebar_width_fig = scale_params['scalebar_width_fig']
     start_x_fig, start_y_fig, bar_height_fig = 0.1, 0.02, 0.008
-
     bg_rect = Rectangle((start_x_fig - 0.005, start_y_fig - 0.005), scalebar_width_fig + 0.01,
                         bar_height_fig * 2 + 0.03, facecolor='white', edgecolor='none',
                         alpha=0.9, transform=fig.transFigure)
     fig.patches.append(bg_rect)
-
     segment_width_fig = scalebar_width_fig / segments
     for i in range(segments):
         x_fig = start_x_fig + i * segment_width_fig
@@ -104,7 +92,6 @@ def draw_accurate_scalebar(fig, ax, pixel_size, scale_params, img_shape):
                              bar_height_fig, facecolor=color, edgecolor='black',
                              linewidth=0.5, transform=fig.transFigure)
             fig.patches.append(rect)
-
     for i in range(segments + 1):
         text_x_fig = start_x_fig + i * segment_width_fig
         text_y_fig = start_y_fig + bar_height_fig * 2 + 0.005
@@ -135,9 +122,11 @@ def create_padded_fig_ax(figsize=(10, 10)):
     return fig, ax
 
 def generate_custom_intervals(min_val, max_val, divisions):
-    """Generates custom intervals for legends."""
+    """Generates custom numerical bins and matching string labels for elevation legends."""
     if max_val - min_val == 0:
-        return [f"{min_val:.1f}"] * divisions, 0, min_val
+        bins = np.linspace(min_val - 1, max_val + 1, divisions + 1).tolist()
+        labels = [f"{min_val:.0f}m"] * divisions
+        return bins, labels
     diff = max_val - min_val
     div = divisions - 2 or 1
     target_interval = diff / div
@@ -147,8 +136,35 @@ def generate_custom_intervals(min_val, max_val, divisions):
             best_interval = candidate
             break
     start = round((min_val + diff / 2) / best_interval) * best_interval - best_interval * (div // 2)
-    labels = [f"{start} 미만"] + [f"{start + i * best_interval}~{start + (i + 1) * best_interval}" for i in range(div)] + [f"{start + div * best_interval} 초과"]
-    return labels, best_interval, start
+    bins = [start + i * best_interval for i in range(div + 1)]
+    final_bins = [float('-inf')] + bins + [float('inf')]
+    labels = [f"{bins[0]:.0f}m 미만"]
+    for i in range(len(bins) - 1):
+        labels.append(f"{bins[i]:.0f}m ~ {bins[i+1]:.0f}m")
+    labels.append(f"{bins[-1]:.0f}m 초과")
+    if len(labels) != divisions:
+        return final_bins, [f"범례 {i+1}" for i in range(divisions)]
+    return final_bins, labels
+
+def generate_slope_intervals(num_divisions=5):
+    """Generates standard bins and labels for slope analysis."""
+    full_labels = ["평탄", "완경사", "급경사", "매우 급경사", "험준"]
+    bins = np.linspace(0, 60, num_divisions).tolist() + [90]
+    labels = []
+    for i in range(len(bins) - 1):
+        if i < len(bins) - 2:
+            label_text = f"{bins[i]:.0f}-{bins[i+1]:.0f}°"
+        else:
+            label_text = f"{bins[i]:.0f}°+"
+        if i < len(full_labels):
+            label_text += f" ({full_labels[i]})"
+        labels.append(label_text)
+    return bins, labels
+
+def generate_aspect_bins():
+    """Generates standard bins for aspect analysis."""
+    bins = [-2, -0.5, 22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5, 360]
+    return bins
 
 def adjust_ax_limits(ax, y_pad_fraction=0.15, x_pad_fraction=0.05):
     """Expands the Axes limits to create padding."""
@@ -157,29 +173,3 @@ def adjust_ax_limits(ax, y_pad_fraction=0.15, x_pad_fraction=0.05):
     x_range, y_range = x_max - x_min, y_max - y_min
     ax.set_xlim(x_min - x_range * x_pad_fraction, x_max + x_range * x_pad_fraction)
     ax.set_ylim(y_min - y_range * y_pad_fraction, y_max + y_range * y_pad_fraction)
-
-def generate_slope_intervals():
-    """Generates standard bins and labels for slope analysis."""
-    bins = [0, 5, 15, 30, 45, 90]
-    labels = ["0-5° (평탄)", "5-15° (완경사)", "15-30° (급경사)", "30-45° (매우 급경사)", "45°+ (험준)"]
-    return bins, labels
-
-def generate_aspect_intervals():
-    """Generates standard bins and labels for aspect analysis."""
-    # Bins for Flat, N, NE, E, SE, S, SW, W, NW
-    bins = [-2, -0.5, 22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5, 360]
-    labels = ["평지 (-1)", "북 (0-22.5)", "북동 (22.5-67.5)", "동 (67.5-112.5)", "남동 (112.5-157.5)", "남 (157.5-202.5)", "남서 (202.5-247.5)", "서 (247.5-292.5)", "북서 (292.5-337.5)", "북 (337.5-360)"]
-    return bins, labels
-
-def generate_slope_intervals():
-    """Generates standard bins and labels for slope analysis."""
-    bins = [0, 5, 15, 30, 45, 90]
-    labels = ["0-5° (평탄)", "5-15° (완경사)", "15-30° (급경사)", "30-45° (매우 급경사)", "45°+ (험준)"]
-    return bins, labels
-
-def generate_aspect_intervals():
-    """Generates standard bins and labels for aspect analysis."""
-    # Bins for Flat, N, NE, E, SE, S, SW, W, NW
-    bins = [-2, -0.5, 22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5, 360]
-    labels = ["평지 (-1)", "북 (0-22.5)", "북동 (22.5-67.5)", "동 (67.5-112.5)", "남동 (112.5-157.5)", "남 (157.5-202.5)", "남서 (202.5-247.5)", "서 (247.5-292.5)", "북서 (292.5-337.5)", "북 (337.5-360)"]
-    return bins, labels

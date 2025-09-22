@@ -13,14 +13,14 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Polygon, Rectangle
 from scipy.ndimage import zoom
 
-from utils.color_palettes import get_landcover_colormap
+from utils.color_palettes import get_landcover_colormap, get_palette
+from utils.theme_util import apply_styles
 from utils.plot_helpers import (
     add_north_arrow, add_scalebar_vector, calculate_accurate_scalebar_params,
     draw_accurate_scalebar, create_hillshade, create_padded_fig_ax,
-    generate_custom_intervals, adjust_ax_limits, ELEVATION_COLORS,
-    generate_slope_intervals, generate_aspect_intervals
+    generate_custom_intervals, adjust_ax_limits,
+    generate_slope_intervals, generate_aspect_bins
 )
-from utils.theme_util import apply_styles
 
 # --- 0. Matplotlib Font Configuration ---
 if platform.system() == 'Windows':
@@ -107,203 +107,104 @@ else:
 
                 title = analysis_map.get(analysis_type, {}).get('title', analysis_type)
                 with st.spinner(f"'{title}' 분석도를 생성하는 중입니다..."):
-                    # 표고 분석: QGIS 스타일 등급 범례 + 음영기복도 오버레이 옵션
+                    # --- Unified DEM Analysis Plotting ---
+                    
+                    # Retrieve all visualization info from the results dictionary
+                    bins = results.get('bins')
+                    labels = results.get('labels')
+                    palette_name = results.get('palette_name')
+
+                    if not all([bins, labels, palette_name]):
+                        st.warning(f"'{title}'에 대한 시각화 정보를 생성할 수 없습니다.")
+                        continue
+
+                    palette_data = get_palette(palette_name)
+                    if not palette_data:
+                        st.warning(f"'{palette_name}' 팔레트를 DB에서 찾을 수 없습니다.")
+                        continue
+                    
+                    colors = [item['hex_color'] for item in palette_data]
+                    
+                    # Create colormap and normalization
+                    cmap = ListedColormap(colors)
+                    norm = BoundaryNorm(bins, cmap.N)
+
+                    # --- Plotting ---
+                    fig, ax = create_padded_fig_ax(figsize=(10, 8))
+                    ax.set_title(title, fontsize=16, pad=20)
+                    
+                    use_hillshade = False
                     if analysis_type == 'elevation':
-
-                        # --- 시각화 옵션 ---
-                        use_hillshade = st.toggle("음영기복도 중첩", value=True,
-                                                  help="지형의 입체감을 표현하기 위해 음영기복도를 표고 분석도에 겹쳐서 표시합니다.")
-
-                        fig, ax = create_padded_fig_ax(figsize=(10, 8))
-
-                        min_val, max_val = stats.get('min', 0), stats.get('max', 1)
-
-                        # hillsade.py 스타일 범례 및 구간 생성
-                        divisions = 10
-                        legend_labels, interval, start = generate_custom_intervals(
-                            min_val, max_val, divisions)
-
-                        # BoundaryNorm을 위한 레벨(구간 경계) 설정
-                        # N개의 구간은 N+1개의 경계가 필요함
-                        div = divisions - 2
-                        levels = [start + i * interval for i in range(div + 1)]
-                        levels = [float('-inf')] + levels + [float('inf')]
-
-                        # 사용자 정의 색상 적용
-                        cmap = ListedColormap(ELEVATION_COLORS[10])
-                        norm = BoundaryNorm(levels, cmap.N)
-
-                        # 음영기복도 중첩 로직 (hillsade.py 스타일)
+                        use_hillshade = st.toggle("음영기복도 중첩", value=True, key=f"hillshade_{analysis_type}")
                         if use_hillshade:
-                            # 1. DEM 데이터로부터 음영기복도 생성
                             hillshade = create_hillshade(grid)
-
-                            # 2. 컬러맵 적용하여 RGBA 데이터 생성
-                            # norm은 각 픽셀이 어떤 색상 구간에 속하는지 인덱스를 반환
                             rgba_data = cmap(norm(grid))
-
-                            # 3. 음영 효과와 색상 데이터 조합 (RGB 채널에만 적용)
-                            # hillshade 값을 조정하여 너무 어두워지지 않게 함 (0.5 ~ 1.2)
                             intensity = 0.7
                             hillshade_adjusted = 0.5 + hillshade * intensity
-
-                            # RGB 채널(0,1,2)에 음영 효과를 곱함
                             for i in range(3):
                                 rgba_data[:, :, i] *= hillshade_adjusted
-
-                            # 4. 유효하지 않은 데이터(NaN)는 투명하게 처리
                             valid_mask = ~np.isnan(grid)
-                            rgba_data[~valid_mask, 3] = 0  # Alpha channel to 0
-
-                            # 5. 최종 이미지 표시
-                            im = ax.imshow(
-                                np.clip(rgba_data, 0, 1), origin='upper')
-                            
-                            # [OPTIMIZATION 3] Clean up large intermediate variables
+                            rgba_data[~valid_mask, 3] = 0
+                            ax.imshow(np.clip(rgba_data, 0, 1), origin='upper')
                             del hillshade, hillshade_adjusted, rgba_data
                             gc.collect()
                         else:
-                            # 음영기복도를 사용하지 않을 경우, 기존처럼 표고도만 그리기
-                            im = ax.imshow(np.ma.masked_invalid(
-                                grid), cmap=cmap, norm=norm)
+                            ax.imshow(np.ma.masked_invalid(grid), cmap=cmap, norm=norm)
+                    else:
+                        ax.imshow(np.ma.masked_invalid(grid), cmap=cmap, norm=norm)
 
-                        # 등고선 추가 (50m 간격)
+                    # Add contour lines for elevation plot
+                    if analysis_type == 'elevation':
+                        min_val, max_val = stats.get('min', 0), stats.get('max', 1)
                         level_interval = 50
                         start_level = np.ceil(min_val / level_interval) * level_interval
                         end_level = np.floor(max_val / level_interval) * level_interval
-
                         if start_level < end_level:
                             contour_levels = np.arange(start_level, end_level + 1, level_interval)
-                        else:
-                            contour_levels = np.linspace(min_val, max_val, 10)
-
-                        contour = ax.contour(
-                            grid, levels=contour_levels, colors='k', alpha=0.3, linewidths=0.7)
-
-                        # 등고선 라벨 추가 (100m 간격)
-                        label_interval = 100
-                        start_label_level = np.ceil(min_val / label_interval) * label_interval
-                        end_label_level = np.floor(max_val / label_interval) * label_interval
-
-                        if start_label_level < end_label_level:
-                            label_levels = np.arange(start_label_level, end_label_level + 1, label_interval)
-                        else:
-                            # 100m 간격 라벨을 표시할 수 없으면 모든 등고선에 라벨 표시
+                            contour = ax.contour(grid, levels=contour_levels, colors='k', alpha=0.3, linewidths=0.7)
+                            label_interval = 100
+                            start_label_level = np.ceil(min_val / label_interval) * label_interval
+                            end_label_level = np.floor(max_val / label_interval) * label_interval
                             label_levels = contour_levels
+                            if start_label_level < end_label_level:
+                                label_levels = np.arange(start_label_level, end_label_level + 1, label_interval)
+                            clabels = ax.clabel(contour, levels=label_levels, inline=True, fontsize=8, fmt='%.0f')
+                            plt.setp(clabels, fontweight='bold', path_effects=[path_effects.withStroke(linewidth=3, foreground='w')])
 
-                        clabels = ax.clabel(contour, levels=label_levels, inline=True, fontsize=8, fmt='%.0f')
-                        # [Readability Improvement] Add a white stroke to contour labels
-                        plt.setp(clabels, fontweight='bold', path_effects=[
-                                 path_effects.withStroke(linewidth=3, foreground='w')])
+                    # --- Legend and Map Elements ---
+                    patches = [mpatches.Patch(color=color, label=label) for color, label in zip(colors, labels)]
+                    legend_title = analysis_map[analysis_type].get('binned_label', '범례')
+                    legend = ax.legend(handles=patches, title=legend_title,
+                                       bbox_to_anchor=(0.1, 0.1), loc='lower left',
+                                       bbox_transform=fig.transFigure,
+                                       fontsize='small', frameon=True, framealpha=1,
+                                       edgecolor='black')
+                    legend.get_title().set_fontweight('bold')
 
-                        ax.set_title(analysis_map[analysis_type].get(
-                            'title', ''), fontsize=16, pad=20)
+                    adjust_ax_limits(ax)
+                    add_north_arrow(ax)
+                    scale_params = calculate_accurate_scalebar_params(effective_pixel_size, grid.shape, 25, fig, ax)
+                    draw_accurate_scalebar(fig, ax, effective_pixel_size, scale_params, grid.shape)
+                    ax.axis('off')
 
-                        # hillsade.py 스타일 범례 생성
-                        patches = []
-                        for i in range(len(legend_labels)):
-                            color = cmap(i)
-                            label = f"{legend_labels[i]} m"
-                            patches.append(mpatches.Patch(
-                                color=color, label=label))
-
-                        legend = ax.legend(handles=patches, title="표고 범위 (m)",
-                                           bbox_to_anchor=(0.1, 0.1), loc='lower left',
-                                           bbox_transform=fig.transFigure,
-                                           fontsize='small', frameon=True, framealpha=1,
-                                           edgecolor='black')
-                        legend.get_title().set_fontweight('bold')
-
-                        adjust_ax_limits(ax)
-                        add_north_arrow(ax)
-                        # [Scalebar Fix] Use the effective_pixel_size for accurate scale bar
-                        scale_params = calculate_accurate_scalebar_params(effective_pixel_size, grid.shape, 25, fig, ax)
-                        draw_accurate_scalebar(fig, ax, effective_pixel_size, scale_params, grid.shape)
-                        ax.axis('off')
-
-                        # PNG 다운로드를 위한 이미지 버퍼 생성
-                        img_buffer = io.BytesIO()
-                        fig.savefig(img_buffer, format='png',
-                                    bbox_inches='tight', dpi=150)
-                        img_buffer.seek(0)
-
-                        st.pyplot(fig)
-                        plt.close(fig)
-
-                        # 다운로드 버튼 추가
-                        file_name_suffix = "_hillshade" if use_hillshade else ""
-                        st.download_button(
-                            label=f"PNG 이미지로 다운로드{' (음영기복도 포함)' if use_hillshade else ''}",
-                            data=img_buffer,
-                            file_name=f"elevation_analysis{file_name_suffix}_{datetime.datetime.now().strftime('%Y%m%d')}.png",
-                            mime="image/png"
-                        )
-
-                    # 경사, 경사향 분석: 통일된 범례 스타일 및 다운로드 버튼 추가
-                    else:
-                        cmap_options = {
-                            'slope': ['viridis', 'inferno', 'magma', 'RdYlGn_r'],
-                            'aspect': ['hsv', 'twilight_shifted', 'twilight']
-                        }
-                        cmaps_to_show = cmap_options.get(analysis_type, ['viridis'])
-                        cmap_tabs = st.tabs([f"'{cmap}' 팔레트" for cmap in cmaps_to_show])
-
-                        for j, cmap_name in enumerate(cmaps_to_show):
-                            with cmap_tabs[j]:
-                                fig, ax = create_padded_fig_ax(figsize=(10, 8))
-                                cmap = plt.get_cmap(cmap_name)
-
-                                # --- 분석 유형에 따라 범례 생성 ---
-                                if analysis_type == 'slope':
-                                    bins, labels = generate_slope_intervals()
-                                    legend_title = "경사 범위 (°)"
-                                elif analysis_type == 'aspect':
-                                    bins, labels = generate_aspect_intervals()
-                                    legend_title = "경사향"
-                                
-                                norm = BoundaryNorm(bins, cmap.N)
-
-                                # --- 플롯 생성 ---
-                                im = ax.imshow(np.ma.masked_invalid(grid), cmap=cmap, norm=norm)
-                                ax.set_title(f"{analysis_map[analysis_type].get('title', '')} - '{cmap_name}'")
-
-                                # --- 범례 생성 및 추가 ---
-                                patches = []
-                                for i in range(len(bins) - 1):
-                                    # 각 구간의 중간값에 해당하는 색상을 샘플링
-                                    color = cmap(norm((bins[i] + bins[i+1]) / 2))
-                                    label = labels[i]
-                                    patches.append(mpatches.Patch(color=color, label=label))
-                                
-                                legend = ax.legend(handles=patches, title=legend_title,
-                                                   bbox_to_anchor=(0.1, 0.1), loc='lower left',
-                                                   bbox_transform=fig.transFigure,
-                                                   fontsize='small', frameon=True, framealpha=1,
-                                                   edgecolor='black')
-                                legend.get_title().set_fontweight('bold')
-
-                                # --- 지도 요소 추가 ---
-                                adjust_ax_limits(ax)
-                                add_north_arrow(ax)
-                                scale_params = calculate_accurate_scalebar_params(effective_pixel_size, grid.shape, 25, fig, ax)
-                                draw_accurate_scalebar(fig, ax, effective_pixel_size, scale_params, grid.shape)
-                                ax.axis('off')
-
-                                # --- 이미지 표시 및 다운로드 버튼 추가 ---
-                                img_buffer = io.BytesIO()
-                                fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
-                                img_buffer.seek(0)
-
-                                st.pyplot(fig)
-                                plt.close(fig)
-
-                                st.download_button(
-                                    label=f"PNG 이미지로 다운로드 ('{cmap_name}' 팔레트)",
-                                    data=img_buffer,
-                                    file_name=f"{analysis_type}_analysis_{cmap_name}_{datetime.datetime.now().strftime('%Y%m%d')}.png",
-                                    mime="image/png",
-                                    key=f"download_{analysis_type}_{cmap_name}" # 각 버튼에 고유 키 부여
-                                )
+                    # --- Display and Download ---
+                    img_buffer = io.BytesIO()
+                    fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+                    img_buffer.seek(0)
+                    st.pyplot(fig)
+                    plt.close(fig)
+                    
+                    file_name_suffix = ""
+                    if analysis_type == 'elevation' and use_hillshade:
+                        file_name_suffix = "_hillshade"
+                    
+                    st.download_button(
+                        label="PNG 이미지로 다운로드",
+                        data=img_buffer,
+                        file_name=f"{analysis_type}_analysis{file_name_suffix}_{datetime.datetime.now().strftime('%Y%m%d')}.png",
+                        mime="image/png",
+                        key=f"download_{analysis_type}"
+                    )
 
             elif gdf is not None and not gdf.empty:
                 title = analysis_map.get(

@@ -169,3 +169,33 @@ def get_landcover_colormap():
     except Exception as e:
         print(f"Warning: Could not fetch landcover color map from DB: {e}")
         return {}
+
+import streamlit as st
+
+@st.cache_data
+def get_palette(palette_name: str):
+    """
+    Fetches a specific color palette from the database.
+
+    Args:
+        palette_name (str): The name of the palette to fetch (e.g., 'elevation_10').
+
+    Returns:
+        list: A list of dicts, where each dict has 'bin_label' and 'hex_color'.
+              Returns an empty list on failure.
+    """
+    try:
+        engine = get_db_engine()
+        with engine.connect() as connection:
+            query = text("""
+                SELECT bin_label, hex_color 
+                FROM color_palettes 
+                WHERE palette_name = :name 
+                ORDER BY sequence
+            """)
+            result = connection.execute(query, {"name": palette_name})
+            palette = [{'bin_label': row.bin_label, 'hex_color': row.hex_color} for row in result]
+            return palette
+    except Exception as e:
+        st.error(f"DB에서 '{palette_name}' 팔레트를 불러오는 데 실패했습니다: {e}")
+        return []
