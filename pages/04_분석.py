@@ -65,7 +65,7 @@ if 'dem_results' not in st.session_state:
     subbasin_name = uploaded_file_name.split('_')[0].split('.')[
         0] if uploaded_file_name else ''
 
-    with st.status("지형 분석 진행 중...", expanded=True) as status:
+    with st.status("분석 진행 중...", expanded=True) as status:
         try:
             dem_results = run_full_analysis(
                 user_gdf_original, selected_types, subbasin_name)

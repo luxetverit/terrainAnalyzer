@@ -157,3 +157,29 @@ def adjust_ax_limits(ax, y_pad_fraction=0.15, x_pad_fraction=0.05):
     x_range, y_range = x_max - x_min, y_max - y_min
     ax.set_xlim(x_min - x_range * x_pad_fraction, x_max + x_range * x_pad_fraction)
     ax.set_ylim(y_min - y_range * y_pad_fraction, y_max + y_range * y_pad_fraction)
+
+def generate_slope_intervals():
+    """Generates standard bins and labels for slope analysis."""
+    bins = [0, 5, 15, 30, 45, 90]
+    labels = ["0-5° (평탄)", "5-15° (완경사)", "15-30° (급경사)", "30-45° (매우 급경사)", "45°+ (험준)"]
+    return bins, labels
+
+def generate_aspect_intervals():
+    """Generates standard bins and labels for aspect analysis."""
+    # Bins for Flat, N, NE, E, SE, S, SW, W, NW
+    bins = [-2, -0.5, 22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5, 360]
+    labels = ["평지 (-1)", "북 (0-22.5)", "북동 (22.5-67.5)", "동 (67.5-112.5)", "남동 (112.5-157.5)", "남 (157.5-202.5)", "남서 (202.5-247.5)", "서 (247.5-292.5)", "북서 (292.5-337.5)", "북 (337.5-360)"]
+    return bins, labels
+
+def generate_slope_intervals():
+    """Generates standard bins and labels for slope analysis."""
+    bins = [0, 5, 15, 30, 45, 90]
+    labels = ["0-5° (평탄)", "5-15° (완경사)", "15-30° (급경사)", "30-45° (매우 급경사)", "45°+ (험준)"]
+    return bins, labels
+
+def generate_aspect_intervals():
+    """Generates standard bins and labels for aspect analysis."""
+    # Bins for Flat, N, NE, E, SE, S, SW, W, NW
+    bins = [-2, -0.5, 22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5, 360]
+    labels = ["평지 (-1)", "북 (0-22.5)", "북동 (22.5-67.5)", "동 (67.5-112.5)", "남동 (112.5-157.5)", "남 (157.5-202.5)", "남서 (202.5-247.5)", "서 (247.5-292.5)", "북서 (292.5-337.5)", "북 (337.5-360)"]
+    return bins, labels

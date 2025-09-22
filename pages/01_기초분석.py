@@ -141,21 +141,18 @@ else:
 # --- 5. Analysis Options Selection ---
 st.markdown("### 분석 항목 선택")
 
+# Redefine analysis items to group DEM analysis
 analysis_items = {
-    "표고 분석": "elevation",
-    "경사 분석": "slope",
-    "경사향 분석": "aspect",
+    "DEM 분석 (표고+경사+경사향)": "dem_group",
     "토지이용 현황": "landcover",
     "토양도": "soil",
     "수문학적 토양군": "hsg",
 }
 
-# Create a list of options for the radio button
 option_labels = list(analysis_items.keys())
 
-# Use st.radio for single selection
 selected_label = st.radio(
-    "분석할 항목을 하나만 선택해주세요.",
+    "분석할 항목을 선택해주세요.",
     options=option_labels,
     index=0,  # Default to the first item
     horizontal=True,
@@ -174,9 +171,13 @@ with col1:
 with col2:
     if st.button("선택한 항목으로 분석 진행", type="primary", use_container_width=True):
         if selected_label:
-            # Get the key corresponding to the selected label
             selected_key = analysis_items[selected_label]
-            st.session_state.selected_analysis_types = [selected_key]
+            
+            if selected_key == 'dem_group':
+                st.session_state.selected_analysis_types = ['elevation', 'slope', 'aspect']
+            else:
+                st.session_state.selected_analysis_types = [selected_key]
+            
             st.switch_page("pages/03_처리중.py")
         else:
             st.warning("분석 항목을 선택해주세요.")
