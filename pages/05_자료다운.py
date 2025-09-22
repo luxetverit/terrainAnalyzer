@@ -1,4 +1,5 @@
 import datetime
+import gc
 import io
 import platform
 
@@ -412,6 +413,10 @@ else:
             grid = results.get('grid')
             gdf = results.get('gdf')
 
+            # [OPTIMIZATION 1] Halve memory usage of the grid by changing data type
+            if grid is not None:
+                grid = grid.astype(np.float32)
+
             if stats:
                 st.markdown("#### 요약 통계")
                 cols = st.columns(3)
@@ -476,6 +481,10 @@ else:
                             # 5. 최종 이미지 표시
                             im = ax.imshow(
                                 np.clip(rgba_data, 0, 1), origin='upper')
+                            
+                            # [OPTIMIZATION 3] Clean up large intermediate variables
+                            del hillshade, hillshade_adjusted, rgba_data
+                            gc.collect()
                         else:
                             # 음영기복도를 사용하지 않을 경우, 기존처럼 표고도만 그리기
                             im = ax.imshow(np.ma.masked_invalid(
