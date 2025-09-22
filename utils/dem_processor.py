@@ -21,6 +21,10 @@ from scipy.interpolate import griddata
 from scipy.ndimage import gaussian_filter
 from shapely.geometry import MultiPolygon, Polygon
 
+from utils.plot_helpers import (generate_custom_intervals,
+                                generate_slope_intervals,
+                                generate_aspect_intervals)
+
 
 def interpolate_dem_from_points(gdf, elevation_field, pixel_size):
     xs, ys, zs = [], [], []
@@ -619,17 +623,21 @@ def process_dem_data(
         }
 
 
-def calculate_binned_stats(grid, num_bins=10):
+def calculate_binned_stats(grid, bins, labels):
+    """Calculates statistics for a grid based on predefined bins and labels."""
     grid_flat = grid[~np.isnan(grid)]
     if grid_flat.size == 0:
         return []
-    min_val, max_val = np.min(grid_flat), np.max(grid_flat)
-    bins = np.linspace(min_val, max_val, num_bins + 1)
-    hist, bin_edges = np.histogram(grid_flat, bins=bins)
+    
+    hist, _ = np.histogram(grid_flat, bins=bins)
     binned_stats = []
-    for i in range(num_bins):
+    
+    # Ensure labels and hist have the same length
+    num_items = min(len(labels), len(hist))
+    for i in range(num_items):
         binned_stats.append(
-            {"bin_range": f"{bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}", "area": hist[i]})
+            {"bin_range": labels[i], "area": hist[i]}
+        )
     return binned_stats
 
 
@@ -791,10 +799,31 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                     clipped_grid, _ = mask(
                         src, clip_geoms, crop=True, nodata=np.nan)
                     clipped_grid = clipped_grid[0]
+
+                    # --- Generate binned stats that match the legend ---
+                    bins, labels = [], []
+                    grid_stats = calc_stats(clipped_grid)
+
+                    if analysis_type == 'elevation':
+                        labels, interval, start = generate_custom_intervals(grid_stats['min'], grid_stats['max'], 10)
+                        # Reconstruct bins from the custom interval logic
+                        div = 10 - 2
+                        bins = [start + i * interval for i in range(div + 1)]
+                        bins = [float('-inf')] + bins + [float('inf')]
+                    
+                    elif analysis_type == 'slope':
+                        bins, labels = generate_slope_intervals()
+
+                    elif analysis_type == 'aspect':
+                        bins, labels = generate_aspect_intervals()
+
+                    binned_stats_result = calculate_binned_stats(clipped_grid, bins, labels)
+                    # --- End of binned stats generation ---
+
                     dem_results[analysis_type] = {
                         'grid': clipped_grid,
-                        'stats': calc_stats(clipped_grid),
-                        'binned_stats': calculate_binned_stats(clipped_grid)
+                        'stats': grid_stats,
+                        'binned_stats': binned_stats_result
                     }
 
         for path in temp_files_to_clean.values():
