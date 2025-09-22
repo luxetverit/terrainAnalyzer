@@ -1,8 +1,9 @@
 import logging
 import os
+import platform
 import sys
 from pathlib import Path
-import platform
+
 import pyproj
 import streamlit as st
 
@@ -16,9 +17,11 @@ try:
 
     if proj_data_dir.exists():
         pyproj.datadir.set_data_dir(str(proj_data_dir))
-        print(f"--- Pyproj data directory explicitly set to: {proj_data_dir} ---")
+        print(
+            f"--- Pyproj data directory explicitly set to: {proj_data_dir} ---")
     else:
-        print(f"--- CRITICAL WARNING: Pyproj data directory not found at {proj_data_dir}. CRS transformations may fail. ---")
+        print(
+            f"--- CRITICAL WARNING: Pyproj data directory not found at {proj_data_dir}. CRS transformations may fail. ---")
 except Exception as e:
     print(f"--- ERROR during pyproj configuration: {e} ---")
 # --- End of Configuration ---
@@ -52,7 +55,7 @@ if "upload_counter" not in st.session_state:
 st.markdown(
     """
 <div class="page-header">
-    <h1>지형 분석 서비스</h1>
+    <h1>지형 분석 서비스(BETA 버전)</h1>
     <p>반복되는 기초자료조사, 이제는 자동화하세요.<br>SHP 또는 DXF 파일을 업로드하여 간편하게 지형 분석을 시작할 수 있습니다.</p>
 </div>
 """,
@@ -121,4 +124,5 @@ if st.button("다음 단계로 이동", use_container_width=True, type="primary"
 
         st.switch_page("pages/01_기초분석.py")
     else:
+        st.warning("분석을 진행하려면 먼저 유효한 파일을 업로드해야 합니다.")
         st.warning("분석을 진행하려면 먼저 유효한 파일을 업로드해야 합니다.")

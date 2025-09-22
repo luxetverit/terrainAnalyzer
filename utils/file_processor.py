@@ -1,3 +1,4 @@
+import itertools
 import os
 import shutil
 import tempfile
@@ -58,7 +59,7 @@ def validate_file(uploaded_file):
 
             if len(shp_files) > 1:
                 shutil.rmtree(extract_dir)
-                return False, "Multiple SHP files found. Please provide a ZIP file with only one SHP file.", None
+                return False, "여러개의 shp파일이 검색되었습니다. 하나의 shp파일은 한개만 허용됩니다.", None
 
             # On success, return the extraction dir. The caller is responsible for its cleanup.
             return True, "Valid shapefile found in ZIP", extract_dir
@@ -125,10 +126,16 @@ def process_dxf_file(file_path, epsg_code):
         msp = doc.modelspace()
         polygons = []
 
-        for entity in msp.query('LWPOLYLINE[closed==True], POLYLINE[closed==True]'):
-            vertices = [v[:2] for v in entity.vertices()]
-            if len(vertices) >= 3:
-                polygons.append(Polygon(vertices))
+        # Query for entity types and filter by attribute in Python for robustness
+        lwpolylines = msp.query('LWPOLYLINE')
+        polylines = msp.query('POLYLINE')
+        
+        for entity in itertools.chain(lwpolylines, polylines):
+            # Check if the entity is closed using its attribute
+            if entity.is_closed:
+                vertices = [v[:2] for v in entity.vertices()]
+                if len(vertices) >= 3:
+                    polygons.append(Polygon(vertices))
 
         for hatch in msp.query('HATCH'):
             for path in hatch.paths:
