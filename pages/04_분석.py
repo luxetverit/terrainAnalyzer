@@ -1,9 +1,13 @@
 import os
+import platform
 import sys
 from pathlib import Path
-import platform
+
 import pyproj
 import streamlit as st
+
+from utils.config import get_db_engine
+from utils.dem_processor import run_full_analysis
 
 # --- PROJ Data Directory Configuration (Cross-Platform Final Version) ---
 try:
@@ -19,10 +23,10 @@ except Exception:
     pass
 # --- End of Configuration ---
 
-from utils.theme_util import apply_styles
-import time
 import shutil
-from utils.dem_processor import process_dem_data, extract_dem_files
+import time
+
+from utils.theme_util import apply_styles
 
 # --- 1. Page Configuration and Styling ---
 st.set_page_config(page_title="분석 실행 - 지형 분석 서비스",
@@ -76,4 +80,8 @@ if 'dem_results' not in st.session_state:
 
     st.success("모든 분석이 완료되었습니다. 결과 페이지로 이동합니다.")
     time.sleep(3)
+    st.switch_page("pages/05_자료다운.py")
+    st.success("모든 분석이 완료되었습니다. 결과 페이지로 이동합니다.")
+    time.sleep(3)
+    st.switch_page("pages/05_자료다운.py")
     st.switch_page("pages/05_자료다운.py")

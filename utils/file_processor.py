@@ -20,46 +20,57 @@ def validate_file(uploaded_file):
     if file_ext not in [".dxf", ".zip"]:
         return (False, "Invalid file type. Please upload a DXF file or ZIP file.", None)
 
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
-    temp_file_path = temp_file.name
-
+    # Use a 'with' statement to create and write to the temp file.
+    # This ensures the file handle is closed automatically, releasing any locks.
     try:
-        with open(temp_file_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
+            temp_file.write(uploaded_file.getbuffer())
+            temp_file_path = temp_file.name
+    except Exception as e:
+        return False, f"Failed to create a temporary file: {str(e)}", None
 
-        if file_ext == ".dxf":
-            try:
-                doc = ezdxf.readfile(temp_file_path)
-                _ = doc.modelspace()
-                return True, "Valid DXF file", temp_file_path
-            except Exception as e:
-                return False, f"Invalid DXF file: {str(e)}", None
+    # Now, the file is closed but exists. We can safely use its path.
+    if file_ext == ".dxf":
+        try:
+            doc = ezdxf.readfile(temp_file_path)
+            _ = doc.modelspace()
+            # On success, return the path. The caller is responsible for cleanup.
+            return True, "Valid DXF file", temp_file_path
+        except Exception as e:
+            # On failure, clean up the temp file.
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+            return False, f"Invalid DXF file: {str(e)}", None
 
-        elif file_ext == ".zip":
-            extract_dir = tempfile.mkdtemp()
-            try:
-                with zipfile.ZipFile(temp_file_path, "r") as zip_ref:
-                    zip_ref.extractall(extract_dir)
+    elif file_ext == ".zip":
+        extract_dir = tempfile.mkdtemp()
+        try:
+            with zipfile.ZipFile(temp_file_path, "r") as zip_ref:
+                zip_ref.extractall(extract_dir)
 
-                # Correctly find shapefiles within the extracted directory
-                shp_files = []
-                for root, _, files in os.walk(extract_dir):
-                    for file in files:
-                        if file.lower().endswith(".shp"):
-                            shp_files.append(os.path.join(root, file))
+            # Find shapefiles within the extracted directory
+            shp_files = [os.path.join(root, file) for root, _, files in os.walk(
+                extract_dir) for file in files if file.lower().endswith(".shp")]
 
-                if not shp_files:
-                    shutil.rmtree(extract_dir)
-                    return False, "No SHP files found in the ZIP archive", None
-                
-                return True, "Valid shapefile found in ZIP", extract_dir
-            except Exception as e:
-                if os.path.exists(extract_dir):
-                    shutil.rmtree(extract_dir)
-                return False, f"Error processing ZIP file: {str(e)}", None
-    finally:
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+            if not shp_files:
+                shutil.rmtree(extract_dir)
+                return False, "No SHP files found in the ZIP archive.", None
+
+            if len(shp_files) > 1:
+                shutil.rmtree(extract_dir)
+                return False, "Multiple SHP files found. Please provide a ZIP file with only one SHP file.", None
+
+            # On success, return the extraction dir. The caller is responsible for its cleanup.
+            return True, "Valid shapefile found in ZIP", extract_dir
+        except Exception as e:
+            if os.path.exists(extract_dir):
+                shutil.rmtree(extract_dir)
+            return False, f"Error processing ZIP file: {str(e)}", None
+        finally:
+            # The temporary ZIP file is no longer needed, so always clean it up.
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+
 
 def process_uploaded_file(file_path, epsg_code):
     """
@@ -153,10 +164,8 @@ def process_shp_file(data, epsg_code):
 
         gdf = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])]
         gdf = gdf[gdf.geometry.is_valid]
-        gdf = gdf.to_crs("EPSG:5179")
 
         return gdf if not gdf.empty else None
 
     except Exception as e:
-        raise ValueError(f"Error processing SHP data: {str(e)}")
         raise ValueError(f"Error processing SHP data: {str(e)}")
