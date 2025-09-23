@@ -13,14 +13,13 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Polygon, Rectangle
 from scipy.ndimage import zoom
 
-from utils.color_palettes import get_landcover_colormap, get_palette
-from utils.plot_helpers import (add_north_arrow, add_scalebar_vector,
-                                adjust_ax_limits,
+from utils.color_palettes import get_landcover_colormap
+from utils.plot_helpers import (ELEVATION_COLORS, add_north_arrow,
+                                add_scalebar_vector, adjust_ax_limits,
                                 calculate_accurate_scalebar_params,
                                 create_hillshade, create_padded_fig_ax,
-                                draw_accurate_scalebar, generate_aspect_bins,
-                                generate_custom_intervals,
-                                generate_slope_intervals)
+                                draw_accurate_scalebar,
+                                generate_custom_intervals)
 from utils.theme_util import apply_styles
 
 # --- 0. Matplotlib Font Configuration ---
@@ -71,12 +70,11 @@ valid_selected_types = [t for t in selected_types if t in dem_results]
 if not valid_selected_types:
     st.info("표시할 2D 분석 결과가 없습니다.")
 else:
-    # Loop through each analysis type and display its results sequentially
-    for analysis_type in valid_selected_types:
-        with st.container(border=True):
-            st.markdown(
-                f"### 📈 {analysis_map.get(analysis_type, {}).get('title', analysis_type)}")
-
+    tab_titles = [analysis_map.get(t, {}).get('title', t)
+                  for t in valid_selected_types]
+    tabs = st.tabs(tab_titles)
+    for i, analysis_type in enumerate(valid_selected_types):
+        with tabs[i]:
             results = dem_results[analysis_type]
             stats = results.get('stats')
             grid = results.get('grid')
@@ -112,72 +110,69 @@ else:
                 title = analysis_map.get(analysis_type, {}).get(
                     'title', analysis_type)
                 with st.spinner(f"'{title}' 분석도를 생성하는 중입니다..."):
-                    # --- Unified DEM Analysis Plotting ---
-
-                    # Retrieve all visualization info from the results dictionary
-                    bins = results.get('bins')
-                    labels = results.get('labels')
-                    palette_name = results.get('palette_name')
-
-                    if not all([bins, labels, palette_name]):
-                        st.warning(f"'{title}'에 대한 시각화 정보를 생성할 수 없습니다.")
-                        continue
-
-                    palette_data = get_palette(palette_name)
-                    if not palette_data:
-                        st.warning(f"'{palette_name}' 팔레트를 DB에서 찾을 수 없습니다.")
-                        continue
-
-                    # For aspect, reorder the palette to put 'Flat' first, matching the data processing.
-                    if analysis_type == 'aspect':
-                        flat_label_item = None
-                        for item in palette_data:
-                            if item['bin_label'].strip().lower() == 'flat':
-                                flat_label_item = item
-                                break
-
-                        if flat_label_item:
-                            palette_data.remove(flat_label_item)
-                            palette_data.insert(0, flat_label_item)
-
-                    colors = [item['hex_color'] for item in palette_data]
-
-                    # Create colormap and normalization
-                    cmap = ListedColormap(colors)
-                    norm = BoundaryNorm(bins, cmap.N)
-
-                    # --- Plotting ---
-                    fig, ax = create_padded_fig_ax(figsize=(10, 8))
-                    ax.set_title(title, fontsize=16, pad=20)
-
-                    use_hillshade = False
+                    # 표고 분석: QGIS 스타일 등급 범례 + 음영기복도 오버레이 옵션
                     if analysis_type == 'elevation':
-                        use_hillshade = st.toggle(
-                            "음영기복도 중첩", value=True, key=f"hillshade_{analysis_type}")
+
+                        # --- 시각화 옵션 ---
+                        use_hillshade = st.toggle("음영기복도 중첩", value=True,
+                                                  help="지형의 입체감을 표현하기 위해 음영기복도를 표고 분석도에 겹쳐서 표시합니다.")
+
+                        fig, ax = create_padded_fig_ax(figsize=(10, 8))
+
+                        min_val, max_val = stats.get(
+                            'min', 0), stats.get('max', 1)
+
+                        # hillsade.py 스타일 범례 및 구간 생성
+                        divisions = 10
+                        legend_labels, interval, start = generate_custom_intervals(
+                            min_val, max_val, divisions)
+
+                        # BoundaryNorm을 위한 레벨(구간 경계) 설정
+                        # N개의 구간은 N+1개의 경계가 필요함
+                        div = divisions - 2
+                        levels = [start + i * interval for i in range(div + 1)]
+                        levels = [float('-inf')] + levels + [float('inf')]
+
+                        # 사용자 정의 색상 적용
+                        cmap = ListedColormap(ELEVATION_COLORS[10])
+                        norm = BoundaryNorm(levels, cmap.N)
+
+                        # 음영기복도 중첩 로직 (hillsade.py 스타일)
                         if use_hillshade:
+                            # 1. DEM 데이터로부터 음영기복도 생성
                             hillshade = create_hillshade(grid)
+
+                            # 2. 컬러맵 적용하여 RGBA 데이터 생성
+                            # norm은 각 픽셀이 어떤 색상 구간에 속하는지 인덱스를 반환
                             rgba_data = cmap(norm(grid))
+
+                            # 3. 음영 효과와 색상 데이터 조합 (RGB 채널에만 적용)
+                            # hillshade 값을 조정하여 너무 어두워지지 않게 함 (0.5 ~ 1.2)
                             intensity = 0.7
                             hillshade_adjusted = 0.5 + hillshade * intensity
+
+                            # RGB 채널(0,1,2)에 음영 효과를 곱함
                             for i in range(3):
                                 rgba_data[:, :, i] *= hillshade_adjusted
+
+                            # 4. 유효하지 않은 데이터(NaN)는 투명하게 처리
                             valid_mask = ~np.isnan(grid)
-                            rgba_data[~valid_mask, 3] = 0
-                            ax.imshow(np.clip(rgba_data, 0, 1), origin='upper')
+                            rgba_data[~valid_mask, 3] = 0  # Alpha channel to 0
+
+                            # 5. 최종 이미지 표시
+                            im = ax.imshow(
+                                np.clip(rgba_data, 0, 1), origin='upper')
+
+                            # [OPTIMIZATION 3] Clean up large intermediate variables
                             del hillshade, hillshade_adjusted, rgba_data
                             gc.collect()
                         else:
-                            ax.imshow(np.ma.masked_invalid(
+                            # 음영기복도를 사용하지 않을 경우, 기존처럼 표고도만 그리기
+                            im = ax.imshow(np.ma.masked_invalid(
                                 grid), cmap=cmap, norm=norm)
-                    else:
-                        ax.imshow(np.ma.masked_invalid(
-                            grid), cmap=cmap, norm=norm)
 
-                    # 등고선 추가 (50m 간격)
-                    if analysis_type == 'elevation':
-                        min_val, max_val = stats.get(
-                            'min', 0), stats.get('max', 1)
-                        level_interval = 100
+                        # 등고선 추가 (50m 간격)
+                        level_interval = 50
                         start_level = np.ceil(
                             min_val / level_interval) * level_interval
                         end_level = np.floor(
@@ -192,8 +187,8 @@ else:
                         contour = ax.contour(
                             grid, levels=contour_levels, colors='k', alpha=0.3, linewidths=0.7)
 
-                        # 등고선 라벨 추가 (50m 간격)
-                        label_interval = 50
+                        # 등고선 라벨 추가 (100m 간격)
+                        label_interval = 100
                         start_label_level = np.ceil(
                             min_val / label_interval) * label_interval
                         end_label_level = np.floor(
@@ -212,45 +207,81 @@ else:
                         plt.setp(clabels, fontweight='bold', path_effects=[
                                  path_effects.withStroke(linewidth=3, foreground='w')])
 
-                    # --- Legend and Map Elements ---
-                    patches = [mpatches.Patch(color=color, label=label)
-                               for color, label in zip(colors, labels)]
-                    # legend_title = analysis_map[analysis_type].get('binned_label', '범례')
-                    legend_title = '범  례'
-                    legend = ax.legend(handles=patches, title=legend_title,
-                                       bbox_to_anchor=(0.1, 0.1), loc='lower left',
-                                       bbox_transform=fig.transFigure,
-                                       fontsize='small', frameon=True, framealpha=1,
-                                       edgecolor='black')
-                    legend.get_title().set_fontweight('bold')
+                        ax.set_title(analysis_map[analysis_type].get(
+                            'title', ''), fontsize=16, pad=20)
 
-                    adjust_ax_limits(ax)
-                    add_north_arrow(ax)
-                    scale_params = calculate_accurate_scalebar_params(
-                        effective_pixel_size, grid.shape, 25, fig, ax)
-                    draw_accurate_scalebar(
-                        fig, ax, effective_pixel_size, scale_params, grid.shape)
-                    ax.axis('off')
+                        # hillsade.py 스타일 범례 생성
+                        patches = []
+                        for i in range(len(legend_labels)):
+                            color = cmap(i)
+                            label = f"{legend_labels[i]} m"
+                            patches.append(mpatches.Patch(
+                                color=color, label=label))
 
-                    # --- Display and Download ---
-                    img_buffer = io.BytesIO()
-                    fig.savefig(img_buffer, format='png',
-                                bbox_inches='tight', dpi=150)
-                    img_buffer.seek(0)
-                    st.pyplot(fig)
-                    plt.close(fig)
+                        legend = ax.legend(handles=patches, title="표고 범위 (m)",
+                                           bbox_to_anchor=(1.05, 1), loc='upper left',
+                                           fontsize='small', frameon=True, framealpha=1,
+                                           edgecolor='black')
+                        legend.get_title().set_fontweight('bold')
 
-                    file_name_suffix = ""
-                    if analysis_type == 'elevation' and use_hillshade:
-                        file_name_suffix = "_hillshade"
+                        adjust_ax_limits(ax)
+                        add_north_arrow(ax)
+                        # [Scalebar Fix] Use the effective_pixel_size for accurate scale bar
+                        scale_params = calculate_accurate_scalebar_params(
+                            effective_pixel_size, grid.shape, 25, fig, ax)
+                        draw_accurate_scalebar(
+                            fig, ax, effective_pixel_size, scale_params, grid.shape)
+                        ax.axis('off')
 
-                    st.download_button(
-                        label="PNG 이미지로 다운로드",
-                        data=img_buffer,
-                        file_name=f"{analysis_type}_analysis{file_name_suffix}_{datetime.datetime.now().strftime('%Y%m%d')}.png",
-                        mime="image/png",
-                        key=f"download_{analysis_type}"
-                    )
+                        # PNG 다운로드를 위한 이미지 버퍼 생성
+                        img_buffer = io.BytesIO()
+                        fig.savefig(img_buffer, format='png',
+                                    bbox_inches='tight', dpi=150)
+                        img_buffer.seek(0)
+
+                        st.pyplot(fig)
+                        plt.close(fig)
+
+                        # 다운로드 버튼 추가
+                        file_name_suffix = "_hillshade" if use_hillshade else ""
+                        st.download_button(
+                            label=f"PNG 이미지로 다운로드{' (음영기복도 포함)' if use_hillshade else ''}",
+                            data=img_buffer,
+                            file_name=f"elevation_analysis{file_name_suffix}_{datetime.datetime.now().strftime('%Y%m%d')}.png",
+                            mime="image/png"
+                        )
+
+                    # 경사, 경사향 분석: 기존 탭 스타일 유지
+                    else:
+                        cmap_options = {
+                            'slope': ['viridis', 'inferno', 'magma', 'RdYlGn_r'],
+                            'aspect': ['hsv', 'twilight_shifted', 'twilight']
+                        }
+                        cmaps_to_show = cmap_options.get(
+                            analysis_type, ['viridis'])
+                        cmap_tabs = st.tabs(
+                            [f"{cmap}" for cmap in cmaps_to_show])
+
+                        for j, cmap in enumerate(cmaps_to_show):
+                            with cmap_tabs[j]:
+                                fig, ax = create_padded_fig_ax(figsize=(10, 8))
+                                im = ax.imshow(
+                                    np.ma.masked_invalid(grid), cmap=cmap)
+                                cbar = fig.colorbar(
+                                    im, ax=ax, label=analysis_map[analysis_type].get('unit', ''), shrink=0.8)
+                                ax.set_title(
+                                    f"{analysis_map[analysis_type].get('title', '')} - '{cmap}'")
+
+                                adjust_ax_limits(ax)
+                                add_north_arrow(ax)
+                                # [Scalebar Fix] Use the effective_pixel_size for accurate scale bar
+                                scale_params = calculate_accurate_scalebar_params(
+                                    effective_pixel_size, grid.shape, 25, fig, ax)
+                                draw_accurate_scalebar(
+                                    fig, ax, effective_pixel_size, scale_params, grid.shape)
+                                ax.axis('off')
+                                st.pyplot(fig)
+                                plt.close(fig)
 
             elif gdf is not None and not gdf.empty:
                 title = analysis_map.get(
@@ -284,11 +315,8 @@ else:
                                 patches.append(patch)
 
                             if patches:
-                                n_items = len(patches)
-                                n_cols = (n_items + 19) // 20
                                 ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
-                                          bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
-                                          ncol=n_cols)
+                                          bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
                         else:
                             # Fallback for landcover if custom colors fail
                             gdf.plot(column=class_col, ax=ax, legend=True, categorical=True,
@@ -297,35 +325,8 @@ else:
                     # Logic for other vector types (soil, hsg)
                     else:
                         if class_col and class_col in gdf.columns:
-                            gdf_plot = gdf[gdf[class_col].notna()].copy()
-                            unique_cats = sorted(gdf_plot[class_col].unique())
-
-                            num_cats = len(unique_cats)
-                            # Use 'tab20' for up to 20 categories, then a sampled colormap for more
-                            if num_cats <= 20:
-                                cmap = plt.cm.get_cmap('tab20', num_cats)
-                                colors = cmap.colors
-                            else:
-                                cmap = plt.cm.get_cmap('viridis', num_cats)
-                                colors = cmap(np.linspace(0, 1, num_cats))
-
-                            color_map = {cat: color for cat,
-                                         color in zip(unique_cats, colors)}
-                            gdf_plot['plot_color'] = gdf_plot[class_col].map(
-                                color_map)
-
-                            gdf_plot.plot(
-                                ax=ax, color=gdf_plot['plot_color'], linewidth=0.5, edgecolor='k')
-
-                            patches = [mpatches.Patch(
-                                color=color, label=cat) for cat, color in color_map.items()]
-
-                            if patches:
-                                n_items = len(patches)
-                                n_cols = (n_items + 19) // 20
-                                ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
-                                          bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
-                                          ncol=n_cols)
+                            gdf.plot(column=class_col, ax=ax, legend=True, categorical=True,
+                                     legend_kwds={'title': type_info.get('legend_title', '분류'), 'bbox_to_anchor': (1.05, 1), 'loc': 'upper left'})
                         else:
                             gdf.plot(ax=ax)
                             if class_col:
@@ -342,7 +343,6 @@ else:
                     plt.close(fig)  # Close figure to save memory
             else:
                 st.info("시각화할 2D 데이터가 없습니다.")
-            st.markdown("---")  # Add a separator between analyses
 # --- 7. Summary and Downloads ---
 st.markdown("### 📋 요약 및 다운로드")
 st.markdown("#### 상세 분석 보고서")
@@ -369,30 +369,23 @@ for analysis_type in valid_selected_types:
     title_info = analysis_map.get(analysis_type, {})
 
     summary_lines.append(f"--- {title_info.get('title', analysis_type)} ---")
-
-    # Calculate total area first to use for percentages
-    total_area_m2 = 0
     if stats:
-        total_area_m2 = stats.get('area', 0) * area_per_pixel
         unit = title_info.get('unit', '')
+        total_area_m2 = stats.get('area', 0) * area_per_pixel
         summary_lines.append(f"- 최소값: {stats.get('min', 0):.2f} {unit}")
         summary_lines.append(f"- 최대값: {stats.get('max', 0):.2f} {unit}")
         summary_lines.append(f"- 평균값: {stats.get('mean', 0):.2f} {unit}")
         summary_lines.append(f"- 분석 면적: {int(total_area_m2):,} m²")
-    elif gdf is not None and not gdf.empty:
-        gdf['area'] = gdf.geometry.area
-        total_area_m2 = gdf.area.sum()
 
     if binned_stats:
         summary_lines.append(f"\n[{title_info.get('binned_label', '구간별 통계')}]")
         for row in binned_stats:
             binned_area_m2 = row['area'] * area_per_pixel
-            percentage = (binned_area_m2 / total_area_m2 *
-                          100) if total_area_m2 > 0 else 0
             summary_lines.append(
-                f"- {row['bin_range']} {title_info.get('unit', '')}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
+                f"- {row['bin_range']} {title_info.get('unit', '')}: {int(binned_area_m2):,} m²")
 
     if gdf is not None and not gdf.empty:
+        gdf['area'] = gdf.geometry.area
         class_col = title_info.get('class_col')
         if class_col and class_col in gdf.columns:
             summary = gdf.groupby(class_col)[
@@ -400,12 +393,9 @@ for analysis_type in valid_selected_types:
             summary_lines.append(
                 f"\n[{title_info.get('binned_label', '종류별 통계')}]")
             for item, area in summary.items():
-                percentage = (area / total_area_m2 *
-                              100) if total_area_m2 > 0 else 0
-                summary_lines.append(
-                    f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
+                summary_lines.append(f"- {item}: {int(area):,} m²")
         else:
-            summary_lines.append(f"- 총 분석 면적: {int(total_area_m2):,} m²")
+            summary_lines.append(f"- 총 분석 면적: {int(gdf.area.sum()):,} m²")
             if class_col:
                 summary_lines.append(
                     f"- (상세 면적 통계를 계산하려면 '{class_col}' 컬럼이 필요합니다.)")
@@ -423,6 +413,5 @@ if st.button("새로운 분석 시작하기"):
     for key in list(st.session_state.keys()):
         if key not in ['upload_counter']:
             del st.session_state[key]
-    st.switch_page("app.py")
     st.switch_page("app.py")
     st.switch_page("app.py")
