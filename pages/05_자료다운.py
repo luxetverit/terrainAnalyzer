@@ -2,6 +2,8 @@ import datetime
 import gc
 import io
 import platform
+import zipfile
+from pathlib import Path
 
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as path_effects
@@ -22,6 +24,13 @@ from utils.plot_helpers import (add_north_arrow, add_scalebar_vector,
                                 generate_custom_intervals,
                                 generate_slope_intervals)
 from utils.theme_util import apply_styles
+
+# --- Prepare base filename for downloads ---
+uploaded_file_name = st.session_state.get('uploaded_file_name', 'untitled')
+base_filename = Path(uploaded_file_name).stem
+timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+
+plot_figures = {}
 
 # --- 0. Matplotlib Font Configuration ---
 if platform.system() == 'Windows':
@@ -115,7 +124,6 @@ else:
                     label="최대값", value=f"{stats.get('max', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
                 cols[2].metric(
                     label="평균값", value=f"{stats.get('mean', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
-                st.markdown("---_---")
 
                 title = analysis_map.get(analysis_type, {}).get(
                     'title', analysis_type)
@@ -246,19 +254,7 @@ else:
                                 bbox_inches='tight', dpi=150)
                     img_buffer.seek(0)
                     st.pyplot(fig)
-                    plt.close(fig)
-
-                    file_name_suffix = ""
-                    if analysis_type == 'elevation' and use_hillshade:
-                        file_name_suffix = "_hillshade"
-
-                    st.download_button(
-                        label="PNG 이미지로 다운로드",
-                        data=img_buffer,
-                        file_name=f"{analysis_type}_analysis{file_name_suffix}_{datetime.datetime.now().strftime('%Y%m%d')}.png",
-                        mime="image/png",
-                        key=f"download_{analysis_type}"
-                    )
+                    plot_figures[analysis_type] = fig
 
             elif gdf is not None and not gdf.empty:
                 title = analysis_map.get(
@@ -345,23 +341,32 @@ else:
                     adjust_ax_limits(ax)
                     add_north_arrow(ax)
                     add_scalebar_vector(ax, dx=1.0)
+                    # ...
                     ax.axis('off')
+
+                    # --- Display and Store Buffer ---
+                    img_buffer = io.BytesIO()
+                    fig.savefig(img_buffer, format='png',
+                                bbox_inches='tight', dpi=150)
+                    img_buffer.seek(0)
+
                     st.pyplot(fig)
-                    plt.close(fig)  # Close figure to save memory
+                    plot_figures[analysis_type] = fig
+
             else:
                 st.info("시각화할 2D 데이터가 없습니다.")
             st.markdown("---")  # Add a separator between analyses
-# --- 7. Summary and Downloads ---
+# --- 7. Summary and Final Download ---
 st.markdown("### 📋 요약 및 다운로드")
-st.markdown("#### 상세 분석 보고서")
 
+# Generate Summary Text
 summary_lines = []
 summary_lines.append(f"분석 일시: {analysis_date}")
 summary_lines.append(
     f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
 if len(matched_sheets) > 20:
     summary_lines.append(
-        f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets[:20])}...)")
+        f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})")
 else:
     summary_lines.append(
         f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})")
@@ -378,7 +383,6 @@ for analysis_type in valid_selected_types:
 
     summary_lines.append(f"--- {title_info.get('title', analysis_type)} ---")
 
-    # Calculate total area first to use for percentages
     total_area_m2 = 0
     if stats:
         total_area_m2 = stats.get('area', 0) * area_per_pixel
@@ -388,7 +392,8 @@ for analysis_type in valid_selected_types:
         summary_lines.append(f"- 평균값: {stats.get('mean', 0):.2f} {unit}")
         summary_lines.append(f"- 분석 면적: {int(total_area_m2):,} m²")
     elif gdf is not None and not gdf.empty:
-        gdf['area'] = gdf.geometry.area
+        if 'area' not in gdf.columns:
+            gdf['area'] = gdf.geometry.area
         total_area_m2 = gdf.area.sum()
 
     if binned_stats:
@@ -398,7 +403,7 @@ for analysis_type in valid_selected_types:
             percentage = (binned_area_m2 / total_area_m2 *
                           100) if total_area_m2 > 0 else 0
             summary_lines.append(
-                f"- {row['bin_range']} {title_info.get('unit', '')}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
+                f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
 
     if gdf is not None and not gdf.empty:
         class_col = title_info.get('class_col')
@@ -421,14 +426,48 @@ for analysis_type in valid_selected_types:
     summary_lines.append("")
 
 summary_text = "\n".join(summary_lines)
-st.text_area("분석 결과 요약", summary_text, height=300)
-st.download_button("분석 결과(.txt) 다운로드", summary_text, "analysis_summary.txt")
 
+# Display Summary Text Area
+st.text_area("상세 분석 보고서", summary_text, height=300)
 
-# --- 8. Footer ---
-st.markdown("---_---")
-if st.button("새로운 분석 시작하기"):
-    for key in list(st.session_state.keys()):
-        if key not in ['upload_counter']:
-            del st.session_state[key]
-    st.switch_page("app.py")
+# --- Create Final ZIP and Download Button ---
+zip_buffer = io.BytesIO()
+with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+    # Add summary text to zip
+    zip_file.writestr(
+        f"analysis_summary_{timestamp}.txt", summary_text.encode('utf-8'))
+
+    # Add plot images to zip
+    for analysis_type, fig in plot_figures.items():
+        img_buffer = io.BytesIO()
+
+        # Re-check toggle state for correct filename
+        use_hillshade = st.session_state.get(
+            f"hillshade_{analysis_type}", False)
+        file_name_suffix = "_hillshade" if analysis_type == 'elevation' and use_hillshade else ""
+
+        fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+        img_buffer.seek(0)
+
+        zip_file.writestr(
+            f"{analysis_type}_analysis{file_name_suffix}.png", img_buffer.getvalue())
+        plt.close(fig)  # Close the figure after saving
+
+zip_buffer.seek(0)
+
+# --- Final Buttons ---
+col1, col2 = st.columns(2)
+with col1:
+    st.download_button(
+        label="📥 모든 결과 다운로드 (ZIP)",
+        data=zip_buffer,
+        file_name=f"analysis_results_{base_filename}_{timestamp}.zip",
+        mime="application/zip",
+        use_container_width=True
+    )
+with col2:
+    if st.button("새로운 분석 시작하기", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            if key not in ['upload_counter']:
+                del st.session_state[key]
+        st.switch_page("app.py")

@@ -1,4 +1,3 @@
-
 /* ==========================================================================
    Global Styles & Variables
    ========================================================================== */
@@ -209,4 +208,15 @@ div[data-testid="stTextInput"] > div > div > input {
     height: 500px; /* Adjust height as needed */
     border-radius: var(--border-radius);
     overflow: hidden;
+}
+
+/* --- Button Height Equalizer --- */
+div[data-testid="stButton"] > button, 
+div[data-testid="stDownloadButton"] > button {
+    height: 2.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
