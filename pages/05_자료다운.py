@@ -14,13 +14,14 @@ from matplotlib.patches import Polygon, Rectangle
 from scipy.ndimage import zoom
 
 from utils.color_palettes import get_landcover_colormap, get_palette
+from utils.plot_helpers import (add_north_arrow, add_scalebar_vector,
+                                adjust_ax_limits,
+                                calculate_accurate_scalebar_params,
+                                create_hillshade, create_padded_fig_ax,
+                                draw_accurate_scalebar, generate_aspect_bins,
+                                generate_custom_intervals,
+                                generate_slope_intervals)
 from utils.theme_util import apply_styles
-from utils.plot_helpers import (
-    add_north_arrow, add_scalebar_vector, calculate_accurate_scalebar_params,
-    draw_accurate_scalebar, create_hillshade, create_padded_fig_ax,
-    generate_custom_intervals, adjust_ax_limits,
-    generate_slope_intervals, generate_aspect_bins
-)
 
 # --- 0. Matplotlib Font Configuration ---
 if platform.system() == 'Windows':
@@ -73,8 +74,9 @@ else:
     # Loop through each analysis type and display its results sequentially
     for analysis_type in valid_selected_types:
         with st.container(border=True):
-            st.markdown(f"### 📈 {analysis_map.get(analysis_type, {}).get('title', analysis_type)}")
-            
+            st.markdown(
+                f"### 📈 {analysis_map.get(analysis_type, {}).get('title', analysis_type)}")
+
             results = dem_results[analysis_type]
             stats = results.get('stats')
             grid = results.get('grid')
@@ -89,8 +91,10 @@ else:
                 PIXEL_THRESHOLD = 5_000_000  # Approx 2500x2000 image
                 if grid.size > PIXEL_THRESHOLD:
                     downsample_factor = (PIXEL_THRESHOLD / grid.size) ** 0.5
-                    st.info(f"ℹ️ 분석 영역이 매우 커서 시각화 해상도를 원본의 {downsample_factor:.1%}로 자동 조정합니다.")
-                    grid = zoom(grid, downsample_factor, order=1) # order=1 for bilinear interpolation
+                    st.info(
+                        f"ℹ️ 분석 영역이 매우 커서 시각화 해상도를 원본의 {downsample_factor:.1%}로 자동 조정합니다.")
+                    # order=1 for bilinear interpolation
+                    grid = zoom(grid, downsample_factor, order=1)
                     # Adjust pixel size to match the new resolution for accurate scale bar
                     effective_pixel_size = effective_pixel_size / downsample_factor
 
@@ -105,10 +109,11 @@ else:
                     label="평균값", value=f"{stats.get('mean', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
                 st.markdown("---_---")
 
-                title = analysis_map.get(analysis_type, {}).get('title', analysis_type)
+                title = analysis_map.get(analysis_type, {}).get(
+                    'title', analysis_type)
                 with st.spinner(f"'{title}' 분석도를 생성하는 중입니다..."):
                     # --- Unified DEM Analysis Plotting ---
-                    
+
                     # Retrieve all visualization info from the results dictionary
                     bins = results.get('bins')
                     labels = results.get('labels')
@@ -122,9 +127,21 @@ else:
                     if not palette_data:
                         st.warning(f"'{palette_name}' 팔레트를 DB에서 찾을 수 없습니다.")
                         continue
-                    
+
+                    # For aspect, reorder the palette to put 'Flat' first, matching the data processing.
+                    if analysis_type == 'aspect':
+                        flat_label_item = None
+                        for item in palette_data:
+                            if item['bin_label'].strip().lower() == 'flat':
+                                flat_label_item = item
+                                break
+
+                        if flat_label_item:
+                            palette_data.remove(flat_label_item)
+                            palette_data.insert(0, flat_label_item)
+
                     colors = [item['hex_color'] for item in palette_data]
-                    
+
                     # Create colormap and normalization
                     cmap = ListedColormap(colors)
                     norm = BoundaryNorm(bins, cmap.N)
@@ -132,10 +149,11 @@ else:
                     # --- Plotting ---
                     fig, ax = create_padded_fig_ax(figsize=(10, 8))
                     ax.set_title(title, fontsize=16, pad=20)
-                    
+
                     use_hillshade = False
                     if analysis_type == 'elevation':
-                        use_hillshade = st.toggle("음영기복도 중첩", value=True, key=f"hillshade_{analysis_type}")
+                        use_hillshade = st.toggle(
+                            "음영기복도 중첩", value=True, key=f"hillshade_{analysis_type}")
                         if use_hillshade:
                             hillshade = create_hillshade(grid)
                             rgba_data = cmap(norm(grid))
@@ -149,31 +167,45 @@ else:
                             del hillshade, hillshade_adjusted, rgba_data
                             gc.collect()
                         else:
-                            ax.imshow(np.ma.masked_invalid(grid), cmap=cmap, norm=norm)
+                            ax.imshow(np.ma.masked_invalid(
+                                grid), cmap=cmap, norm=norm)
                     else:
-                        ax.imshow(np.ma.masked_invalid(grid), cmap=cmap, norm=norm)
+                        ax.imshow(np.ma.masked_invalid(
+                            grid), cmap=cmap, norm=norm)
 
                     # Add contour lines for elevation plot
                     if analysis_type == 'elevation':
-                        min_val, max_val = stats.get('min', 0), stats.get('max', 1)
+                        min_val, max_val = stats.get(
+                            'min', 0), stats.get('max', 1)
                         level_interval = 50
-                        start_level = np.ceil(min_val / level_interval) * level_interval
-                        end_level = np.floor(max_val / level_interval) * level_interval
+                        start_level = np.ceil(
+                            min_val / level_interval) * level_interval
+                        end_level = np.floor(
+                            max_val / level_interval) * level_interval
                         if start_level < end_level:
-                            contour_levels = np.arange(start_level, end_level + 1, level_interval)
-                            contour = ax.contour(grid, levels=contour_levels, colors='k', alpha=0.3, linewidths=0.7)
+                            contour_levels = np.arange(
+                                start_level, end_level + 1, level_interval)
+                            contour = ax.contour(
+                                grid, levels=contour_levels, colors='k', alpha=0.3, linewidths=0.7)
                             label_interval = 100
-                            start_label_level = np.ceil(min_val / label_interval) * label_interval
-                            end_label_level = np.floor(max_val / label_interval) * label_interval
+                            start_label_level = np.ceil(
+                                min_val / label_interval) * label_interval
+                            end_label_level = np.floor(
+                                max_val / label_interval) * label_interval
                             label_levels = contour_levels
                             if start_label_level < end_label_level:
-                                label_levels = np.arange(start_label_level, end_label_level + 1, label_interval)
-                            clabels = ax.clabel(contour, levels=label_levels, inline=True, fontsize=8, fmt='%.0f')
-                            plt.setp(clabels, fontweight='bold', path_effects=[path_effects.withStroke(linewidth=3, foreground='w')])
+                                label_levels = np.arange(
+                                    start_label_level, end_label_level + 1, label_interval)
+                            clabels = ax.clabel(
+                                contour, levels=label_levels, inline=True, fontsize=8, fmt='%.0f')
+                            plt.setp(clabels, fontweight='bold', path_effects=[
+                                     path_effects.withStroke(linewidth=3, foreground='w')])
 
                     # --- Legend and Map Elements ---
-                    patches = [mpatches.Patch(color=color, label=label) for color, label in zip(colors, labels)]
-                    legend_title = analysis_map[analysis_type].get('binned_label', '범례')
+                    patches = [mpatches.Patch(color=color, label=label)
+                               for color, label in zip(colors, labels)]
+                    # legend_title = analysis_map[analysis_type].get('binned_label', '범례')
+                    legend_title = '범  례'
                     legend = ax.legend(handles=patches, title=legend_title,
                                        bbox_to_anchor=(0.1, 0.1), loc='lower left',
                                        bbox_transform=fig.transFigure,
@@ -183,21 +215,24 @@ else:
 
                     adjust_ax_limits(ax)
                     add_north_arrow(ax)
-                    scale_params = calculate_accurate_scalebar_params(effective_pixel_size, grid.shape, 25, fig, ax)
-                    draw_accurate_scalebar(fig, ax, effective_pixel_size, scale_params, grid.shape)
+                    scale_params = calculate_accurate_scalebar_params(
+                        effective_pixel_size, grid.shape, 25, fig, ax)
+                    draw_accurate_scalebar(
+                        fig, ax, effective_pixel_size, scale_params, grid.shape)
                     ax.axis('off')
 
                     # --- Display and Download ---
                     img_buffer = io.BytesIO()
-                    fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+                    fig.savefig(img_buffer, format='png',
+                                bbox_inches='tight', dpi=150)
                     img_buffer.seek(0)
                     st.pyplot(fig)
                     plt.close(fig)
-                    
+
                     file_name_suffix = ""
                     if analysis_type == 'elevation' and use_hillshade:
                         file_name_suffix = "_hillshade"
-                    
+
                     st.download_button(
                         label="PNG 이미지로 다운로드",
                         data=img_buffer,
@@ -253,7 +288,7 @@ else:
                         if class_col and class_col in gdf.columns:
                             gdf_plot = gdf[gdf[class_col].notna()].copy()
                             unique_cats = sorted(gdf_plot[class_col].unique())
-                            
+
                             num_cats = len(unique_cats)
                             # Use 'tab20' for up to 20 categories, then a sampled colormap for more
                             if num_cats <= 20:
@@ -263,13 +298,17 @@ else:
                                 cmap = plt.cm.get_cmap('viridis', num_cats)
                                 colors = cmap(np.linspace(0, 1, num_cats))
 
-                            color_map = {cat: color for cat, color in zip(unique_cats, colors)}
-                            gdf_plot['plot_color'] = gdf_plot[class_col].map(color_map)
-                            
-                            gdf_plot.plot(ax=ax, color=gdf_plot['plot_color'], linewidth=0.5, edgecolor='k')
-                            
-                            patches = [mpatches.Patch(color=color, label=cat) for cat, color in color_map.items()]
-                            
+                            color_map = {cat: color for cat,
+                                         color in zip(unique_cats, colors)}
+                            gdf_plot['plot_color'] = gdf_plot[class_col].map(
+                                color_map)
+
+                            gdf_plot.plot(
+                                ax=ax, color=gdf_plot['plot_color'], linewidth=0.5, edgecolor='k')
+
+                            patches = [mpatches.Patch(
+                                color=color, label=cat) for cat, color in color_map.items()]
+
                             if patches:
                                 n_items = len(patches)
                                 n_cols = (n_items + 19) // 20
@@ -292,7 +331,7 @@ else:
                     plt.close(fig)  # Close figure to save memory
             else:
                 st.info("시각화할 2D 데이터가 없습니다.")
-            st.markdown("---") # Add a separator between analyses
+            st.markdown("---")  # Add a separator between analyses
 # --- 7. Summary and Downloads ---
 st.markdown("### 📋 요약 및 다운로드")
 st.markdown("#### 상세 분석 보고서")
@@ -319,7 +358,7 @@ for analysis_type in valid_selected_types:
     title_info = analysis_map.get(analysis_type, {})
 
     summary_lines.append(f"--- {title_info.get('title', analysis_type)} ---")
-    
+
     # Calculate total area first to use for percentages
     total_area_m2 = 0
     if stats:
@@ -337,19 +376,23 @@ for analysis_type in valid_selected_types:
         summary_lines.append(f"\n[{title_info.get('binned_label', '구간별 통계')}]")
         for row in binned_stats:
             binned_area_m2 = row['area'] * area_per_pixel
-            percentage = (binned_area_m2 / total_area_m2 * 100) if total_area_m2 > 0 else 0
+            percentage = (binned_area_m2 / total_area_m2 *
+                          100) if total_area_m2 > 0 else 0
             summary_lines.append(
                 f"- {row['bin_range']} {title_info.get('unit', '')}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
 
     if gdf is not None and not gdf.empty:
         class_col = title_info.get('class_col')
         if class_col and class_col in gdf.columns:
-            summary = gdf.groupby(class_col)['area'].sum().sort_values(ascending=False)
+            summary = gdf.groupby(class_col)[
+                'area'].sum().sort_values(ascending=False)
             summary_lines.append(
                 f"\n[{title_info.get('binned_label', '종류별 통계')}]")
             for item, area in summary.items():
-                percentage = (area / total_area_m2 * 100) if total_area_m2 > 0 else 0
-                summary_lines.append(f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
+                percentage = (area / total_area_m2 *
+                              100) if total_area_m2 > 0 else 0
+                summary_lines.append(
+                    f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
         else:
             summary_lines.append(f"- 총 분석 면적: {int(total_area_m2):,} m²")
             if class_col:
@@ -369,5 +412,6 @@ if st.button("새로운 분석 시작하기"):
     for key in list(st.session_state.keys()):
         if key not in ['upload_counter']:
             del st.session_state[key]
+    st.switch_page("app.py")
     st.switch_page("app.py")
     st.switch_page("app.py")
