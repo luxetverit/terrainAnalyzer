@@ -357,7 +357,7 @@ else:
                 st.info("시각화할 2D 데이터가 없습니다.")
             st.markdown("---")  # Add a separator between analyses
 # --- 7. Summary and Final Download ---
-st.markdown("### 📋 요약 및 다운로드")
+st.markdown("### 📋 상세 분석 보고서")
 
 # Generate Summary Text
 summary_lines = []
@@ -428,7 +428,7 @@ for analysis_type in valid_selected_types:
 summary_text = "\n".join(summary_lines)
 
 # Display Summary Text Area
-st.text_area("상세 분석 보고서", summary_text, height=300)
+st.text_area("", summary_text, height=400)
 
 # --- Create Final ZIP and Download Button ---
 zip_buffer = io.BytesIO()

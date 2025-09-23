@@ -65,6 +65,18 @@ if 'initial_analysis_done' not in st.session_state:
             st.session_state.matched_sheets = map_results.get(
                 'matched_sheets', [])
 
+            # --- Validation for too many map sheets ---
+            if len(st.session_state.matched_sheets) > 60:
+                st.error("분석 영역이 너무 넓습니다(관련 도엽 60개 초과). 더 작은 영역을 선택하여 다시 시도해주세요.")
+                # Clear session state before going back
+                for key in list(st.session_state.keys()):
+                    if key != 'upload_counter':
+                        del st.session_state[key]
+                if st.button("홈으로 돌아가기"):
+                    st.switch_page("app.py")
+                st.stop()
+            # --- End Validation ---
+
             from utils.config import KAKAO_API_KEY
             location_info = get_location_name(gdf, epsg_code, KAKAO_API_KEY)
             st.session_state.location_info = location_info
