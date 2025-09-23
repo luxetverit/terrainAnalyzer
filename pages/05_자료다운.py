@@ -193,7 +193,7 @@ else:
                             grid, levels=contour_levels, colors='k', alpha=0.3, linewidths=0.7)
 
                         # 등고선 라벨 추가 (50m 간격)
-                        label_interval = 50
+                        label_interval = 100
                         start_label_level = np.ceil(
                             min_val / label_interval) * label_interval
                         end_label_level = np.floor(
