@@ -238,8 +238,11 @@ else:
                                 patches.append(patch)
 
                             if patches:
+                                n_items = len(patches)
+                                n_cols = (n_items + 19) // 20
                                 ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
-                                          bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+                                          bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
+                                          ncol=n_cols)
                         else:
                             # Fallback for landcover if custom colors fail
                             gdf.plot(column=class_col, ax=ax, legend=True, categorical=True,
@@ -248,8 +251,31 @@ else:
                     # Logic for other vector types (soil, hsg)
                     else:
                         if class_col and class_col in gdf.columns:
-                            gdf.plot(column=class_col, ax=ax, legend=True, categorical=True,
-                                     legend_kwds={'title': type_info.get('legend_title', '분류'), 'bbox_to_anchor': (1.05, 1), 'loc': 'upper left'})
+                            gdf_plot = gdf[gdf[class_col].notna()].copy()
+                            unique_cats = sorted(gdf_plot[class_col].unique())
+                            
+                            num_cats = len(unique_cats)
+                            # Use 'tab20' for up to 20 categories, then a sampled colormap for more
+                            if num_cats <= 20:
+                                cmap = plt.cm.get_cmap('tab20', num_cats)
+                                colors = cmap.colors
+                            else:
+                                cmap = plt.cm.get_cmap('viridis', num_cats)
+                                colors = cmap(np.linspace(0, 1, num_cats))
+
+                            color_map = {cat: color for cat, color in zip(unique_cats, colors)}
+                            gdf_plot['plot_color'] = gdf_plot[class_col].map(color_map)
+                            
+                            gdf_plot.plot(ax=ax, color=gdf_plot['plot_color'], linewidth=0.5, edgecolor='k')
+                            
+                            patches = [mpatches.Patch(color=color, label=cat) for cat, color in color_map.items()]
+                            
+                            if patches:
+                                n_items = len(patches)
+                                n_cols = (n_items + 19) // 20
+                                ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
+                                          bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
+                                          ncol=n_cols)
                         else:
                             gdf.plot(ax=ax)
                             if class_col:
