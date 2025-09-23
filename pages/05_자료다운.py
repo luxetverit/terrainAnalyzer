@@ -53,8 +53,16 @@ matched_sheets = st.session_state.get('matched_sheets', [])
 analysis_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 # --- 4. Page Header ---
-st.markdown('''<div class="page-header"><h1>분석 결과</h1><p>선택하신 항목에 대한 지형 분석 결과입니다.</p></div>''',
-            unsafe_allow_html=True)
+cols = st.columns([0.95, 0.05])
+with cols[0]:
+    st.markdown('''<div class="page-header" style="margin-top: -1.5rem;"><h1>분석 결과</h1><p>선택하신 항목에 대한 지형 분석 결과입니다.</p></div>''',
+                unsafe_allow_html=True)
+with cols[1]:
+    if st.button("🏠", help="홈 화면으로 돌아갑니다.", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            if key != 'upload_counter':
+                del st.session_state[key]
+        st.switch_page("app.py")
 
 # --- 6. 2D Analysis Results (in Tabs) ---
 st.markdown("### 📈 2D 상세 분석 결과")
@@ -423,6 +431,4 @@ if st.button("새로운 분석 시작하기"):
     for key in list(st.session_state.keys()):
         if key not in ['upload_counter']:
             del st.session_state[key]
-    st.switch_page("app.py")
-    st.switch_page("app.py")
     st.switch_page("app.py")

@@ -25,11 +25,11 @@ if "selected_analysis_types" not in st.session_state:
 # --- 3. Processing Simulation ---
 st.markdown(
     """
-<div class="page-header">
-    <h1>분석 실행 중</h1>
-    <p>선택하신 항목에 대한 분석을 진행하고 있습니다. 잠시만 기다려주세요.</p>
-</div>
-""",
+    <div class="page-header" style="margin-top: -1.5rem;">
+        <h1>분석 실행 중</h1>
+        <p>선택하신 항목에 대한 분석을 진행하고 있습니다. 잠시만 기다려주세요.</p>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 

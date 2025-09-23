@@ -55,7 +55,7 @@ except Exception as e:
 
 
 # --- 4. Page Header ---
-st.markdown('''<div class="page-header"><h1>분석 실행</h1><p>선택하신 항목에 대한 분석을 실행합니다. 이 작업은 몇 분 정도 소요될 수 있습니다.</p></div>''', unsafe_allow_html=True)
+st.markdown('''<div class="page-header" style="margin-top: -1.5rem;"><h1>분석 실행</h1><p>선택하신 항목에 대한 분석을 실행합니다. 이 작업은 몇 분 정도 소요될 수 있습니다.</p></div>''', unsafe_allow_html=True)
 
 # --- 5. Main Analysis Logic ---
 if 'dem_results' not in st.session_state:

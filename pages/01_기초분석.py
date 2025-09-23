@@ -99,7 +99,15 @@ if 'initial_analysis_done' not in st.session_state:
             st.stop()
 
 # --- 4. Display Analysis Results ---
-st.markdown("### 파일 분석 결과")
+cols = st.columns([0.95, 0.05])
+with cols[0]:
+    st.markdown("### 파일 분석 결과")
+with cols[1]:
+    if st.button("🏠", help="홈 화면으로 돌아갑니다.", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            if key != 'upload_counter':
+                del st.session_state[key]
+        st.switch_page("app.py")
 loc_info = st.session_state.location_info
 map_sheets = st.session_state.matched_sheets
 
