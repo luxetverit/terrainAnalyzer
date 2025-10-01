@@ -240,7 +240,7 @@ else:
                                  path_effects.withStroke(linewidth=3, foreground='w')])
 
                     # --- Legend and Map Elements ---
-                    patches = [mpatches.Patch(color=color, label=label, edgecolor='black', linewidth=0.5)
+                    patches = [mpatches.Patch(color=color, label=label)
                                for color, label in zip(colors, labels)]
                     legend_titles = {
                         'elevation': '표고(Elevation)',
@@ -254,6 +254,11 @@ else:
                                        fontsize='small', frameon=True, framealpha=1,
                                        edgecolor='black')
                     legend.get_title().set_fontweight('bold')
+
+                    # Force edge color and width on legend patches
+                    for legend_patch in legend.get_patches():
+                        legend_patch.set_edgecolor('black')
+                        legend_patch.set_linewidth(0.7)
 
                     adjust_ax_limits(ax)
                     add_north_arrow(ax)
@@ -299,15 +304,19 @@ else:
                                 # Default to white if not in map
                                 color = color_map.get(code, '#FFFFFF')
                                 patch = mpatches.Patch(
-                                    color=color, label=f'{name} ({code})', edgecolor='black', linewidth=0.5)
+                                    color=color, label=f'{name} ({code})')
                                 patches.append(patch)
 
                             if patches:
                                 n_items = len(patches)
                                 n_cols = (n_items + 19) // 20
-                                ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
+                                legend = ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
                                           bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
                                           ncol=n_cols)
+                                # Force edge color and width on legend patches
+                                for legend_patch in legend.get_patches():
+                                    legend_patch.set_edgecolor('black')
+                                    legend_patch.set_linewidth(0.7)
                         else:
                             # Fallback for landcover if custom colors fail
                             gdf.plot(column=class_col, ax=ax, legend=True, categorical=True,
@@ -337,14 +346,18 @@ else:
                                 ax=ax, color=gdf_plot['plot_color'], linewidth=0.5, edgecolor='k')
 
                             patches = [mpatches.Patch(
-                                color=color, label=cat, edgecolor='black', linewidth=0.5) for cat, color in color_map.items()]
+                                color=color, label=cat) for cat, color in color_map.items()]
 
                             if patches:
                                 n_items = len(patches)
                                 n_cols = (n_items + 19) // 20
-                                ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
+                                legend = ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
                                           bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
                                           ncol=n_cols)
+                                # Force edge color and width on legend patches
+                                for legend_patch in legend.get_patches():
+                                    legend_patch.set_edgecolor('black')
+                                    legend_patch.set_linewidth(0.7)
                         else:
                             gdf.plot(ax=ax)
                             if class_col:
