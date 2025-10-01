@@ -92,7 +92,7 @@ analysis_map = {
     'aspect': {'title': "경사향 분석", 'unit': "°", 'binned_label': "경사향 구간별 면적"},
     'soil': {'title': "토양도 분석", 'unit': "m²", 'binned_label': "토양 종류별 면적", 'class_col': 'soilsy', 'legend_title': '토양도(Soilsy)'},
     'hsg': {'title': "수문학적 토양군", 'unit': "m²", 'binned_label': "HSG 등급별 면적", 'class_col': 'hg', 'legend_title': '토양군(HSG)'},
-    'landcover': {'title': "토지피복도", 'unit': "m²", 'binned_label': "토지피복별 면적", 'class_col': 'l2_name', 'legend_title': '토지피복도(Landover)'},
+    'landcover': {'title': "토지피복도", 'unit': "m²", 'binned_label': "토지피복별 면적", 'class_col': 'l2_name', 'legend_title': '토지피복도(Landcover)'},
 }
 valid_selected_types = [t for t in selected_types if t in dem_results]
 
@@ -311,8 +311,8 @@ else:
                                 n_items = len(patches)
                                 n_cols = (n_items + 19) // 20
                                 legend = ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
-                                          bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
-                                          ncol=n_cols)
+                                                   bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
+                                                   ncol=n_cols)
                                 # Force edge color and width on legend patches
                                 for legend_patch in legend.get_patches():
                                     legend_patch.set_edgecolor('black')
@@ -352,8 +352,8 @@ else:
                                 n_items = len(patches)
                                 n_cols = (n_items + 19) // 20
                                 legend = ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
-                                          bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
-                                          ncol=n_cols)
+                                                   bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
+                                                   ncol=n_cols)
                                 # Force edge color and width on legend patches
                                 for legend_patch in legend.get_patches():
                                     legend_patch.set_edgecolor('black')
