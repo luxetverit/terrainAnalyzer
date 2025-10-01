@@ -91,8 +91,8 @@ analysis_map = {
     'slope': {'title': "경사 분석", 'unit': "°", 'binned_label': "경사 구간별 면적"},
     'aspect': {'title': "경사향 분석", 'unit': "°", 'binned_label': "경사향 구간별 면적"},
     'soil': {'title': "토양도 분석", 'unit': "m²", 'binned_label': "토양 종류별 면적", 'class_col': 'soilsy', 'legend_title': '토양도(Soilsy)'},
-    'hsg': {'title': "수문학적 토양군", 'unit': "m²", 'binned_label': "HSG 등급별 면적", 'class_col': 'hg', 'legend_title': 'HSG 등급'},
-    'landcover': {'title': "토지피복도", 'unit': "m²", 'binned_label': "토지피복별 면적", 'class_col': 'l2_name', 'legend_title': '토지피복'},
+    'hsg': {'title': "수문학적 토양군", 'unit': "m²", 'binned_label': "HSG 등급별 면적", 'class_col': 'hg', 'legend_title': '토양군(HSG)'},
+    'landcover': {'title': "토지피복도", 'unit': "m²", 'binned_label': "토지피복별 면적", 'class_col': 'l2_name', 'legend_title': '토지피복도(Landover)'},
 }
 valid_selected_types = [t for t in selected_types if t in dem_results]
 
@@ -364,16 +364,17 @@ else:
                     # 2. Create a proxy for image shape and pixel size
                     #    (based on savefig dpi and figsize)
                     dpi = 150
-                    figsize_w, figsize_h = (10, 10) # The figsize used in create_padded_fig_ax
+                    # The figsize used in create_padded_fig_ax
+                    figsize_w, figsize_h = (10, 10)
                     proxy_img_width_px = int(figsize_w * dpi)
                     proxy_img_height_px = int(figsize_h * dpi)
                     proxy_img_shape = (proxy_img_height_px, proxy_img_width_px)
-                    
+
                     # effective_pixel_size is meters/pixel
                     if proxy_img_width_px > 0:
                         effective_pixel_size = map_width_m / proxy_img_width_px
                     else:
-                        effective_pixel_size = 1.0 # Fallback
+                        effective_pixel_size = 1.0  # Fallback
 
                     # 3. Calculate and draw the accurate scalebar
                     scale_params = calculate_accurate_scalebar_params(
@@ -427,19 +428,26 @@ if area_source_type:
 
 # General Info
 summary_lines.append(f"분석 일시: {analysis_date}")
-summary_lines.append(f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
-csv_data.append({'분석 구분': '기본 정보', '항목': '분석 일시', '값': analysis_date, '단위': '', '면적(m²)': '', '비율(%)': ''})
-csv_data.append({'분석 구분': '기본 정보', '항목': '분석 대상', '값': st.session_state.get('uploaded_file_name', 'N/A'), '단위': '', '면적(m²)': '', '비율(%)': ''})
+summary_lines.append(
+    f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
+csv_data.append({'분석 구분': '기본 정보', '항목': '분석 일시',
+                '값': analysis_date, '단위': '', '면적(m²)': '', '비율(%)': ''})
+csv_data.append({'분석 구분': '기본 정보', '항목': '분석 대상', '값': st.session_state.get(
+    'uploaded_file_name', 'N/A'), '단위': '', '면적(m²)': '', '비율(%)': ''})
 
 if len(matched_sheets) > 20:
     summary_lines.append(f"사용된 도엽: {len(matched_sheets)}개")
-    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽 개수', '값': len(matched_sheets), '단위': '개', '면적(m²)': '', '비율(%)': ''})
+    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽 개수', '값': len(
+        matched_sheets), '단위': '개', '면적(m²)': '', '비율(%)': ''})
 else:
-    summary_lines.append(f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})")
-    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽', '값': f"{len(matched_sheets)}개 ({', '.join(matched_sheets)})", '단위': '', '면적(m²)': '', '비율(%)': ''})
+    summary_lines.append(
+        f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})")
+    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽',
+                    '값': f"{len(matched_sheets)}개 ({', '.join(matched_sheets)})", '단위': '', '면적(m²)': '', '비율(%)': ''})
 
 summary_lines.append(f"총 분석 면적: {int(report_total_area_m2):,} m²")
-csv_data.append({'분석 구분': '기본 정보', '항목': '총 분석 면적', '값': '', '단위': 'm²', '면적(m²)': f"{int(report_total_area_m2):,}", '비율(%)': ''})
+csv_data.append({'분석 구분': '기본 정보', '항목': '총 분석 면적', '값': '', '단위': 'm²',
+                '면적(m²)': f"{int(report_total_area_m2):,}", '비율(%)': ''})
 summary_lines.append("")
 
 # Analysis-specific Info
@@ -459,10 +467,13 @@ for analysis_type in valid_selected_types:
         summary_lines.append(f"- 최소값: {stats.get('min', 0):.2f} {unit}")
         summary_lines.append(f"- 최대값: {stats.get('max', 0):.2f} {unit}")
         summary_lines.append(f"- 평균값: {stats.get('mean', 0):.2f} {unit}")
-        
-        csv_data.append({'분석 구분': title, '항목': '최소값', '값': f"{stats.get('min', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
-        csv_data.append({'분석 구분': title, '항목': '최대값', '값': f"{stats.get('max', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
-        csv_data.append({'분석 구분': title, '항목': '평균값', '값': f"{stats.get('mean', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
+
+        csv_data.append({'분석 구분': title, '항목': '최소값',
+                        '값': f"{stats.get('min', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
+        csv_data.append({'분석 구분': title, '항목': '최대값',
+                        '값': f"{stats.get('max', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
+        csv_data.append({'분석 구분': title, '항목': '평균값',
+                        '값': f"{stats.get('mean', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
 
     elif gdf is not None and not gdf.empty:
         if 'area' not in gdf.columns:
@@ -473,25 +484,34 @@ for analysis_type in valid_selected_types:
         summary_lines.append(f"\n[{title_info.get('binned_label', '구간별 통계')}]")
         for row in binned_stats:
             binned_area_m2 = row['area'] * area_per_pixel
-            percentage = (binned_area_m2 / total_area_m2 * 100) if total_area_m2 > 0 else 0
-            summary_lines.append(f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
-            csv_data.append({'분석 구분': title, '항목': row['bin_range'], '값': '', '단위': '', '면적(m²)': f"{int(binned_area_m2):,}", '비율(%)': f"{percentage:.1f}"})
+            percentage = (binned_area_m2 / total_area_m2 *
+                          100) if total_area_m2 > 0 else 0
+            summary_lines.append(
+                f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
+            csv_data.append({'분석 구분': title, '항목': row['bin_range'], '값': '', '단위': '',
+                            '면적(m²)': f"{int(binned_area_m2):,}", '비율(%)': f"{percentage:.1f}"})
 
     if gdf is not None and not gdf.empty:
         class_col = title_info.get('class_col')
         if class_col and class_col in gdf.columns:
-            summary = gdf.groupby(class_col)['area'].sum().sort_values(ascending=False)
-            summary_lines.append(f"\n[{title_info.get('binned_label', '종류별 통계')}]")
+            summary = gdf.groupby(class_col)[
+                'area'].sum().sort_values(ascending=False)
+            summary_lines.append(
+                f"\n[{title_info.get('binned_label', '종류별 통계')}]")
             for item, area in summary.items():
-                percentage = (area / total_area_m2 * 100) if total_area_m2 > 0 else 0
-                summary_lines.append(f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
-                csv_data.append({'분석 구분': title, '항목': item, '값': '', '단위': '', '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
+                percentage = (area / total_area_m2 *
+                              100) if total_area_m2 > 0 else 0
+                summary_lines.append(
+                    f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
+                csv_data.append({'분석 구분': title, '항목': item, '값': '', '단위': '',
+                                '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
         else:
             # This part is tricky, as total area for GDF is already calculated above.
             # We just add the line to the text summary.
             summary_lines.append(f"- 총 분석 면적: {int(total_area_m2):,} m²")
             if class_col:
-                summary_lines.append(f"- (상세 면적 통계를 계산하려면 '{class_col}' 컬럼이 필요합니다.)")
+                summary_lines.append(
+                    f"- (상세 면적 통계를 계산하려면 '{class_col}' 컬럼이 필요합니다.)")
 
     summary_lines.append("")
 
