@@ -355,8 +355,31 @@ else:
 
                     adjust_ax_limits(ax)
                     add_north_arrow(ax)
-                    add_scalebar_vector(ax, dx=1.0)
-                    # ...
+
+                    # --- Unify Scalebar to match DEM style ---
+                    # 1. Get map dimensions in meters from the plot axes
+                    x_min, x_max = ax.get_xlim()
+                    map_width_m = x_max - x_min
+
+                    # 2. Create a proxy for image shape and pixel size
+                    #    (based on savefig dpi and figsize)
+                    dpi = 150
+                    figsize_w, figsize_h = (10, 10) # The figsize used in create_padded_fig_ax
+                    proxy_img_width_px = int(figsize_w * dpi)
+                    proxy_img_height_px = int(figsize_h * dpi)
+                    proxy_img_shape = (proxy_img_height_px, proxy_img_width_px)
+                    
+                    # effective_pixel_size is meters/pixel
+                    if proxy_img_width_px > 0:
+                        effective_pixel_size = map_width_m / proxy_img_width_px
+                    else:
+                        effective_pixel_size = 1.0 # Fallback
+
+                    # 3. Calculate and draw the accurate scalebar
+                    scale_params = calculate_accurate_scalebar_params(
+                        effective_pixel_size, proxy_img_shape, 25, fig, ax)
+                    draw_accurate_scalebar(
+                        fig, ax, effective_pixel_size, scale_params, proxy_img_shape)
                     ax.axis('off')
 
                     # --- Display and Store Buffer ---

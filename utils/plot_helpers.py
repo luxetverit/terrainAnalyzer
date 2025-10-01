@@ -75,7 +75,7 @@ def calculate_accurate_scalebar_params(pixel_size, img_shape, target_size_mm, fi
         scale_distance_m = scale_distance_km * 1000
         unit, scale_value = 'km', scale_distance_km
     return {
-        'length': scale_value, 'units': unit, 'segments': 2,
+        'length': scale_value, 'units': unit, 'segments': 4,
         'scalebar_width_fig': (scale_distance_m / pixel_size) / pixels_per_inch / fig_width_inch
     }
 
