@@ -258,7 +258,7 @@ else:
                     adjust_ax_limits(ax)
                     add_north_arrow(ax)
                     scale_params = calculate_accurate_scalebar_params(
-                        effective_pixel_size, grid.shape, 25, fig, ax)
+                        effective_pixel_size, grid.shape, 50, fig, ax)
                     draw_accurate_scalebar(
                         fig, ax, effective_pixel_size, scale_params, grid.shape)
                     ax.axis('off')
@@ -377,7 +377,7 @@ else:
 
                     # 3. Calculate and draw the accurate scalebar
                     scale_params = calculate_accurate_scalebar_params(
-                        effective_pixel_size, proxy_img_shape, 25, fig, ax)
+                        effective_pixel_size, proxy_img_shape, 50, fig, ax)
                     draw_accurate_scalebar(
                         fig, ax, effective_pixel_size, scale_params, proxy_img_shape)
                     ax.axis('off')
