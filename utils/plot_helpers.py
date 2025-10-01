@@ -161,19 +161,28 @@ def generate_custom_intervals(min_val, max_val, divisions):
     return final_bins, labels
 
 
-def generate_slope_intervals(num_divisions=5):
-    """Generates standard bins and labels for slope analysis."""
-    # full_labels = ["평탄", "완경사", "급경사", "매우 급경사", "험준"]
-    bins = np.linspace(0, 60, num_divisions).tolist() + [90]
+def generate_slope_intervals(num_divisions=8):
+    """Generates bins and labels for slope analysis with 5-degree increments."""
+    if num_divisions < 1:
+        return [], []
+
+    # Create bins with 5-degree steps. The number of bin edges is num_divisions + 1.
+    # The last bin goes from the last step to 90.
+    bins = [i * 5 for i in range(num_divisions)]
+    bins.append(90)
+
     labels = []
-    for i in range(len(bins) - 1):
-        if i < len(bins) - 2:
-            label_text = f"{bins[i]:.0f}-{bins[i+1]:.0f}°"
+    # Create num_divisions labels
+    for i in range(num_divisions):
+        lower_bound = bins[i]
+        if i < num_divisions - 1:
+            upper_bound = bins[i+1]
+            label_text = f"{lower_bound}-{upper_bound}°"
         else:
-            label_text = f"{bins[i]:.0f}°+"
-        # if i < len(full_labels):
-        #    label_text += f" ({full_labels[i]})"
+            # The last label represents everything from the last step upwards.
+            label_text = f"{lower_bound}°+"
         labels.append(label_text)
+
     return bins, labels
 
 

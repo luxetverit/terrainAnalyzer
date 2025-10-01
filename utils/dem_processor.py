@@ -201,33 +201,36 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                         # Use as many bins as there are labels (+1 for the edges).
                         bins = full_bins[:len(labels) + 1]
 
-                        # Augment labels with degree ranges for clarity
-                        new_labels = []
-                        for i, label in enumerate(labels):
-                            # The first label is 'Flat'
-                            if i == 0 and label.strip().lower() == 'flat':
-                                new_labels.append(
-                                    f"{label} (-1)")
-                                continue
 
-                            lower_bound = bins[i]
-                            upper_bound = bins[i+1]
-
-                            # For North, show the full conceptual range
-                            if label.strip().lower() == 'north':
-                                new_labels.append(
-                                    f"{label} (0°~22.5°, 337.5°~360°)")
-                            else:
-                                new_labels.append(
-                                    f"{label} ({lower_bound}°~{upper_bound}°)")
-
-                        labels = new_labels
 
                     binned_stats_result = calculate_binned_stats(
                         clipped_grid, bins, labels)
+
+                    # Save the clipped grid to a new temporary TIF file
+                    with tempfile.NamedTemporaryFile(suffix=f'_{analysis_type}.tif', delete=False) as tmp_clipped_file:
+                        clipped_tif_path = tmp_clipped_file.name
+                    
+                    # Get metadata from the source file to write the new TIF
+                    with rasterio.open(temp_files_to_clean[analysis_type]) as src:
+                        profile = src.profile
+                        # Update profile for the clipped grid
+                        profile.update({
+                            'height': clipped_grid.shape[0],
+                            'width': clipped_grid.shape[1],
+                            'transform': rasterio.windows.transform(src.window(*src.bounds), src.transform)
+                        })
+
+                    with rasterio.open(clipped_tif_path, 'w', **profile) as dst:
+                        dst.write(clipped_grid, 1)
+
                     dem_results[analysis_type] = {
-                        'grid': clipped_grid, 'stats': grid_stats, 'binned_stats': binned_stats_result,
-                        'bins': bins, 'labels': labels, 'palette_name': palette_name
+                        'grid': clipped_grid, 
+                        'stats': grid_stats, 
+                        'binned_stats': binned_stats_result,
+                        'bins': bins, 
+                        'labels': labels, 
+                        'palette_name': palette_name,
+                        'tif_path': clipped_tif_path  # Add the path to the results
                     }
         for path in temp_files_to_clean.values():
             if path and os.path.exists(path):

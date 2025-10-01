@@ -68,6 +68,17 @@ with cols[0]:
                 unsafe_allow_html=True)
 with cols[1]:
     if st.button("🏠", help="홈 화면으로 돌아갑니다.", use_container_width=True):
+        # Clean up temporary TIF files before clearing session state
+        if 'dem_results' in st.session_state:
+            for analysis_type in st.session_state.dem_results:
+                results = st.session_state.dem_results.get(analysis_type, {})
+                tif_path = results.get('tif_path')
+                if tif_path and Path(tif_path).exists():
+                    try:
+                        Path(tif_path).unlink()
+                    except OSError as e:
+                        st.warning(f".tif 파일을 삭제하는 데 실패했습니다: {e}")
+
         for key in list(st.session_state.keys()):
             if key != 'upload_counter':
                 del st.session_state[key]
@@ -79,7 +90,7 @@ analysis_map = {
     'elevation': {'title': "표고 분석", 'unit': "m", 'binned_label': "표고 구간별 면적"},
     'slope': {'title': "경사 분석", 'unit': "°", 'binned_label': "경사 구간별 면적"},
     'aspect': {'title': "경사향 분석", 'unit': "°", 'binned_label': "경사향 구간별 면적"},
-    'soil': {'title': "토양도 분석", 'unit': "m²", 'binned_label': "토양 종류별 면적", 'class_col': 'soilsy', 'legend_title': '토성'},
+    'soil': {'title': "토양도 분석", 'unit': "m²", 'binned_label': "토양 종류별 면적", 'class_col': 'soilsy', 'legend_title': '토양도(Soilsy)'},
     'hsg': {'title': "수문학적 토양군", 'unit': "m²", 'binned_label': "HSG 등급별 면적", 'class_col': 'hg', 'legend_title': 'HSG 등급'},
     'landcover': {'title': "토지피복도", 'unit': "m²", 'binned_label': "토지피복별 면적", 'class_col': 'l2_name', 'legend_title': '토지피복'},
 }
@@ -229,10 +240,14 @@ else:
                                  path_effects.withStroke(linewidth=3, foreground='w')])
 
                     # --- Legend and Map Elements ---
-                    patches = [mpatches.Patch(color=color, label=label)
+                    patches = [mpatches.Patch(color=color, label=label, edgecolor='black', linewidth=0.5)
                                for color, label in zip(colors, labels)]
-                    # legend_title = analysis_map[analysis_type].get('binned_label', '범례')
-                    legend_title = '범  례'
+                    legend_titles = {
+                        'elevation': '표고(Elevation)',
+                        'slope': '경사(Slope)',
+                        'aspect': '경사향(Aspect)'
+                    }
+                    legend_title = legend_titles.get(analysis_type, '범  례')
                     legend = ax.legend(handles=patches, title=legend_title,
                                        bbox_to_anchor=(0.1, 0.1), loc='lower left',
                                        bbox_transform=fig.transFigure,
@@ -284,7 +299,7 @@ else:
                                 # Default to white if not in map
                                 color = color_map.get(code, '#FFFFFF')
                                 patch = mpatches.Patch(
-                                    color=color, label=f'{name} ({code})')
+                                    color=color, label=f'{name} ({code})', edgecolor='black', linewidth=0.5)
                                 patches.append(patch)
 
                             if patches:
@@ -322,7 +337,7 @@ else:
                                 ax=ax, color=gdf_plot['plot_color'], linewidth=0.5, edgecolor='k')
 
                             patches = [mpatches.Patch(
-                                color=color, label=cat) for cat, color in color_map.items()]
+                                color=color, label=cat, edgecolor='black', linewidth=0.5) for cat, color in color_map.items()]
 
                             if patches:
                                 n_items = len(patches)
@@ -359,29 +374,60 @@ else:
 # --- 7. Summary and Final Download ---
 st.markdown("### 📋 상세 분석 보고서")
 
-# Generate Summary Text
+# --- Generate Data for TXT Summary (for display) and CSV (for download) ---
 summary_lines = []
-summary_lines.append(f"분석 일시: {analysis_date}")
-summary_lines.append(
-    f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
-if len(matched_sheets) > 20:
-    summary_lines.append(
-        f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})")
-else:
-    summary_lines.append(
-        f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})")
-summary_lines.append("")
+csv_data = []
 
 pixel_size = st.session_state.get('pixel_size', 1.0)
 area_per_pixel = pixel_size * pixel_size
 
+# --- Calculate Total Area for the report header ---
+report_total_area_m2 = 0
+area_source_type = None
+
+# Prioritize 'elevation' for total area calculation
+if 'elevation' in valid_selected_types:
+    area_source_type = 'elevation'
+elif valid_selected_types:
+    area_source_type = valid_selected_types[0]
+
+if area_source_type:
+    results = dem_results[area_source_type]
+    stats = results.get('stats')
+    gdf = results.get('gdf')
+    if stats:
+        report_total_area_m2 = stats.get('area', 0) * area_per_pixel
+    elif gdf is not None and not gdf.empty:
+        if 'area' not in gdf.columns:
+            gdf['area'] = gdf.geometry.area
+        report_total_area_m2 = gdf.area.sum()
+
+# General Info
+summary_lines.append(f"분석 일시: {analysis_date}")
+summary_lines.append(f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
+csv_data.append({'분석 구분': '기본 정보', '항목': '분석 일시', '값': analysis_date, '단위': '', '면적(m²)': '', '비율(%)': ''})
+csv_data.append({'분석 구분': '기본 정보', '항목': '분석 대상', '값': st.session_state.get('uploaded_file_name', 'N/A'), '단위': '', '면적(m²)': '', '비율(%)': ''})
+
+if len(matched_sheets) > 20:
+    summary_lines.append(f"사용된 도엽: {len(matched_sheets)}개")
+    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽 개수', '값': len(matched_sheets), '단위': '개', '면적(m²)': '', '비율(%)': ''})
+else:
+    summary_lines.append(f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})")
+    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽', '값': f"{len(matched_sheets)}개 ({', '.join(matched_sheets)})", '단위': '', '면적(m²)': '', '비율(%)': ''})
+
+summary_lines.append(f"총 분석 면적: {int(report_total_area_m2):,} m²")
+csv_data.append({'분석 구분': '기본 정보', '항목': '총 분석 면적', '값': '', '단위': 'm²', '면적(m²)': f"{int(report_total_area_m2):,}", '비율(%)': ''})
+summary_lines.append("")
+
+# Analysis-specific Info
 for analysis_type in valid_selected_types:
     stats = dem_results[analysis_type].get('stats')
     binned_stats = dem_results[analysis_type].get('binned_stats')
     gdf = dem_results[analysis_type].get('gdf')
     title_info = analysis_map.get(analysis_type, {})
+    title = title_info.get('title', analysis_type)
 
-    summary_lines.append(f"--- {title_info.get('title', analysis_type)} ---")
+    summary_lines.append(f"--- {title} ---")
 
     total_area_m2 = 0
     if stats:
@@ -390,7 +436,11 @@ for analysis_type in valid_selected_types:
         summary_lines.append(f"- 최소값: {stats.get('min', 0):.2f} {unit}")
         summary_lines.append(f"- 최대값: {stats.get('max', 0):.2f} {unit}")
         summary_lines.append(f"- 평균값: {stats.get('mean', 0):.2f} {unit}")
-        summary_lines.append(f"- 분석 면적: {int(total_area_m2):,} m²")
+        
+        csv_data.append({'분석 구분': title, '항목': '최소값', '값': f"{stats.get('min', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
+        csv_data.append({'분석 구분': title, '항목': '최대값', '값': f"{stats.get('max', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
+        csv_data.append({'분석 구분': title, '항목': '평균값', '값': f"{stats.get('mean', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''})
+
     elif gdf is not None and not gdf.empty:
         if 'area' not in gdf.columns:
             gdf['area'] = gdf.geometry.area
@@ -400,32 +450,35 @@ for analysis_type in valid_selected_types:
         summary_lines.append(f"\n[{title_info.get('binned_label', '구간별 통계')}]")
         for row in binned_stats:
             binned_area_m2 = row['area'] * area_per_pixel
-            percentage = (binned_area_m2 / total_area_m2 *
-                          100) if total_area_m2 > 0 else 0
-            summary_lines.append(
-                f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
+            percentage = (binned_area_m2 / total_area_m2 * 100) if total_area_m2 > 0 else 0
+            summary_lines.append(f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
+            csv_data.append({'분석 구분': title, '항목': row['bin_range'], '값': '', '단위': '', '면적(m²)': f"{int(binned_area_m2):,}", '비율(%)': f"{percentage:.1f}"})
 
     if gdf is not None and not gdf.empty:
         class_col = title_info.get('class_col')
         if class_col and class_col in gdf.columns:
-            summary = gdf.groupby(class_col)[
-                'area'].sum().sort_values(ascending=False)
-            summary_lines.append(
-                f"\n[{title_info.get('binned_label', '종류별 통계')}]")
+            summary = gdf.groupby(class_col)['area'].sum().sort_values(ascending=False)
+            summary_lines.append(f"\n[{title_info.get('binned_label', '종류별 통계')}]")
             for item, area in summary.items():
-                percentage = (area / total_area_m2 *
-                              100) if total_area_m2 > 0 else 0
-                summary_lines.append(
-                    f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
+                percentage = (area / total_area_m2 * 100) if total_area_m2 > 0 else 0
+                summary_lines.append(f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
+                csv_data.append({'분석 구분': title, '항목': item, '값': '', '단위': '', '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
         else:
+            # This part is tricky, as total area for GDF is already calculated above.
+            # We just add the line to the text summary.
             summary_lines.append(f"- 총 분석 면적: {int(total_area_m2):,} m²")
             if class_col:
-                summary_lines.append(
-                    f"- (상세 면적 통계를 계산하려면 '{class_col}' 컬럼이 필요합니다.)")
+                summary_lines.append(f"- (상세 면적 통계를 계산하려면 '{class_col}' 컬럼이 필요합니다.)")
 
     summary_lines.append("")
 
+# --- Create Display Text and CSV String ---
 summary_text = "\n".join(summary_lines)
+report_df = pd.DataFrame(csv_data)
+csv_buffer = io.StringIO()
+report_df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+csv_string = csv_buffer.getvalue()
+
 
 # Display Summary Text Area
 st.text_area("", summary_text, height=400)
@@ -433,9 +486,9 @@ st.text_area("", summary_text, height=400)
 # --- Create Final ZIP and Download Button ---
 zip_buffer = io.BytesIO()
 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-    # Add summary text to zip
+    # Add summary CSV to zip
     zip_file.writestr(
-        f"analysis_summary_{timestamp}.txt", summary_text.encode('utf-8'))
+        f"analysis_summary_{timestamp}.csv", csv_string)
 
     # Add plot images to zip
     for analysis_type, fig in plot_figures.items():
@@ -453,6 +506,13 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             f"{analysis_type}_analysis{file_name_suffix}.png", img_buffer.getvalue())
         plt.close(fig)  # Close the figure after saving
 
+    # Add analysis TIF files to zip
+    for analysis_type in valid_selected_types:
+        results = dem_results.get(analysis_type, {})
+        tif_path = results.get('tif_path')
+        if tif_path and Path(tif_path).exists():
+            zip_file.write(tif_path, arcname=f"{analysis_type}.tif")
+
 zip_buffer.seek(0)
 
 # --- Final Buttons ---
@@ -467,6 +527,17 @@ with col1:
     )
 with col2:
     if st.button("새로운 분석 시작하기", use_container_width=True):
+        # Clean up temporary TIF files before clearing session state
+        if 'dem_results' in st.session_state:
+            for analysis_type in st.session_state.dem_results:
+                results = st.session_state.dem_results.get(analysis_type, {})
+                tif_path = results.get('tif_path')
+                if tif_path and Path(tif_path).exists():
+                    try:
+                        Path(tif_path).unlink()
+                    except OSError as e:
+                        st.warning(f".tif 파일을 삭제하는 데 실패했습니다: {e}")
+
         for key in list(st.session_state.keys()):
             if key not in ['upload_counter']:
                 del st.session_state[key]
