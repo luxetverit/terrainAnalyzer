@@ -2,18 +2,24 @@ import datetime
 import gc
 import io
 import platform
+import tempfile
 import zipfile
 from pathlib import Path
 
+import geopandas as gpd
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import shapefile  # Use the newly installed pyshp library
 import streamlit as st
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Polygon, Rectangle
 from scipy.ndimage import zoom
+from shapely import wkb
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import transform
 
 from utils.color_palettes import get_landcover_colormap, get_palette
 from utils.plot_helpers import (add_north_arrow, add_scalebar_vector,
@@ -25,12 +31,120 @@ from utils.plot_helpers import (add_north_arrow, add_scalebar_vector,
                                 generate_slope_intervals)
 from utils.theme_util import apply_styles
 
+
+# --- Helper function for SHP export using pyshp ---
+def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesIO | None:
+    """Converts a GeoDataFrame to a zipped Shapefile in memory using the pyshp library."""
+    if gdf.empty:
+        return None
+
+    gdf = gdf.copy()
+
+    # Step 1: Force all elements to be geometry objects, correctly handling WKB.
+    def force_to_geometry(geom):
+        if isinstance(geom, str):
+            try:
+                return wkb.loads(geom, hex=True)
+            except Exception:
+                return None
+        return geom if isinstance(geom, BaseGeometry) else None
+    gdf['geometry'] = gdf['geometry'].apply(force_to_geometry)
+
+    # Step 2: Force all geometries to 2D.
+    def drop_z(geom):
+        if geom is None or not geom.has_z:
+            return geom
+        return transform(lambda x, y, z=None: (x, y), geom)
+    gdf['geometry'] = gdf['geometry'].apply(drop_z)
+
+    # Step 3: Filter out any null or invalid geometries.
+    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty &
+              gdf.geometry.is_valid]
+    if gdf.empty:
+        st.warning("SHP 파일로 변환할 유효한 데이터가 없습니다. (데이터 정제 후)")
+        return None
+
+    # Step 4: Truncate column names for Shapefile compatibility.
+    gdf.columns = [str(col) for col in gdf.columns]
+    rename_dict = {}
+    for col in gdf.columns:
+        if len(col.encode('utf-8')) > 10:
+            new_col = col.encode('utf-8')[:10].decode('utf-8', 'ignore')
+            i = 1
+            final_col = new_col
+            while final_col in gdf.columns or final_col in rename_dict.values():
+                suffix = f"_{i}"
+                final_col = f"{col.encode('utf-8')[:10-len(suffix.encode('utf-8'))].decode('utf-8', 'ignore')}{suffix}"
+                i += 1
+            rename_dict[col] = final_col
+    if rename_dict:
+        gdf = gdf.rename(columns=rename_dict)
+
+    # Step 5: Write to shapefile using pyshp.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shp_path = str(Path(tmpdir) / f"{base_filename}.shp")
+        try:
+            with shapefile.Writer(shp_path) as w:
+                w.autoBalance = 1  # Ensure consistency
+
+                # Define fields from GeoDataFrame columns
+                for col_name, dtype in gdf.dtypes.items():
+                    if col_name.lower() == 'geometry':
+                        continue
+                    if pd.api.types.is_integer_dtype(dtype):
+                        w.field(col_name, 'N')
+                    elif pd.api.types.is_float_dtype(dtype):
+                        w.field(col_name, 'F')
+                    elif pd.api.types.is_datetime64_any_dtype(dtype):
+                        w.field(col_name, 'D')
+                    else:
+                        w.field(col_name, 'C', size=254)
+
+                # Write geometries and records
+                for index, row in gdf.iterrows():
+                    w.shape(row.geometry)
+
+                    record_values = []
+                    for col_name in gdf.columns:
+                        if col_name.lower() == 'geometry':
+                            continue
+
+                        value = row[col_name]
+
+                        # Handle potential NaN values before writing the record
+                        if pd.isna(value):
+                            dtype = gdf[col_name].dtype
+                            if pd.api.types.is_integer_dtype(dtype):
+                                value = 0
+                            elif pd.api.types.is_float_dtype(dtype):
+                                value = 0.0
+                            else:
+                                value = ''  # Default for strings/other types
+
+                        record_values.append(value)
+
+                    w.record(*record_values)
+
+            # Zip the created files
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for file_path in Path(tmpdir).glob(f'{base_filename}.*'):
+                    zip_file.write(file_path, arcname=file_path.name)
+            zip_buffer.seek(0)
+            return zip_buffer
+
+        except Exception as e:
+            st.error(f"pyshp 라이브러리로 SHP 파일 생성 중 오류가 발생했습니다: {e}")
+            return None
+
+
 # --- Prepare base filename for downloads ---
 uploaded_file_name = st.session_state.get('uploaded_file_name', 'untitled')
 base_filename = Path(uploaded_file_name).stem
 timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
 
 plot_figures = {}
+shp_buffers = {}
 
 # --- 0. Matplotlib Font Configuration ---
 if platform.system() == 'Windows':
@@ -405,6 +519,17 @@ else:
                     st.pyplot(fig)
                     plot_figures[analysis_type] = fig
 
+                    # --- SHP 파일 버퍼 생성 및 저장 ---
+                    shp_zip_buffer = create_shapefile_zip(
+                        gdf, f"{analysis_type}_{base_filename}"
+                    )
+                    if shp_zip_buffer:
+                        shp_buffers[analysis_type] = {
+                            "buffer": shp_zip_buffer,
+                            "title": type_info.get('title', analysis_type)
+                        }
+                    # --- 로직 완료 ---
+
             else:
                 st.info("시각화할 2D 데이터가 없습니다.")
             st.markdown("---")  # Add a separator between analyses
@@ -571,30 +696,64 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
 
 zip_buffer.seek(0)
 
-# --- Final Buttons ---
-col1, col2 = st.columns(2)
-with col1:
-    st.download_button(
-        label="📥 모든 결과 다운로드 (ZIP)",
-        data=zip_buffer,
-        file_name=f"analysis_results_{base_filename}_{timestamp}.zip",
-        mime="application/zip",
-        use_container_width=True
-    )
-with col2:
-    if st.button("새로운 분석 시작하기", use_container_width=True):
-        # Clean up temporary TIF files before clearing session state
-        if 'dem_results' in st.session_state:
-            for analysis_type in st.session_state.dem_results:
-                results = st.session_state.dem_results.get(analysis_type, {})
-                tif_path = results.get('tif_path')
-                if tif_path and Path(tif_path).exists():
-                    try:
-                        Path(tif_path).unlink()
-                    except OSError as e:
-                        st.warning(f".tif 파일을 삭제하는 데 실패했습니다: {e}")
+# --- 8. Final Download Section ---
+st.markdown("### 📥 다운로드")
 
-        for key in list(st.session_state.keys()):
-            if key not in ['upload_counter']:
-                del st.session_state[key]
-        st.switch_page("app.py")
+# --- Create a list of all download items ---
+download_items = []
+
+# Add the main ZIP download first
+download_items.append({
+    "label": "📥 시각화자료+분석보고서 (ZIP)",
+    "data": zip_buffer,
+    "file_name": f"analysis_results_{base_filename}_{timestamp}.zip",
+    "mime": "application/zip",
+    "key": "main_zip_download",
+    "help": "분석 리포트, 모든 분석도(PNG), 모든 원본 분석 파일(TIF)을 한번에 다운로드합니다."
+})
+
+# Add the individual SHP downloads
+for analysis_type, data in shp_buffers.items():
+    download_items.append({
+        "label": f"📥 {data['title']} (SHP)",
+        "data": data['buffer'],
+        "file_name": f"{analysis_type}_{base_filename}_{timestamp}.zip",
+        "mime": "application/zip",
+        "key": f"shp_download_bottom_{analysis_type}",
+        "help": f"{data['title']} 분석 결과를 SHP 파일로 다운로드합니다."
+    })
+
+# --- Create columns and display buttons ---
+if download_items:
+    cols = st.columns(len(download_items))
+    for i, item in enumerate(download_items):
+        with cols[i]:
+            st.download_button(
+                label=item["label"],
+                data=item["data"],
+                file_name=item["file_name"],
+                mime=item["mime"],
+                key=item["key"],
+                use_container_width=True,
+                help=item["help"]
+            )
+
+st.markdown("")  # Spacer
+
+# --- Final Buttons ---
+if st.button("새로운 분석 시작하기", use_container_width=True):
+    # Clean up temporary TIF files before clearing session state
+    if 'dem_results' in st.session_state:
+        for analysis_type in st.session_state.dem_results:
+            results = st.session_state.dem_results.get(analysis_type, {})
+            tif_path = results.get('tif_path')
+            if tif_path and Path(tif_path).exists():
+                try:
+                    Path(tif_path).unlink()
+                except OSError as e:
+                    st.warning(f".tif 파일을 삭제하는 데 실패했습니다: {e}")
+
+    for key in list(st.session_state.keys()):
+        if key not in ['upload_counter']:
+            del st.session_state[key]
+    st.switch_page("app.py")
