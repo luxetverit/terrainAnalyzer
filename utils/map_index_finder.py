@@ -149,6 +149,7 @@ def find_overlapping_sheets(gdf, epsg_code):
             'matched_sheets': all_sheet_ids,
             'mapsheet_info': info,
             'preview_image': preview_image,
+            'index_gdf': map_index,
         }
 
     except Exception as e:

@@ -1,7 +1,8 @@
 import os
+import platform
 import sys
 from pathlib import Path
-import platform
+
 import pyproj
 import streamlit as st
 
@@ -19,9 +20,13 @@ except Exception:
     pass
 # --- End of Configuration ---
 
-import streamlit.components.v1 as components
 import logging
 import traceback
+
+import folium
+import geopandas as gpd
+import streamlit.components.v1 as components
+from streamlit_folium import st_folium
 
 import utils.map_index_finder as map_index_finder
 from utils.file_processor import process_uploaded_file
@@ -135,25 +140,70 @@ if '정보 없음' in road_address or '실패' in road_address or '오류' in ro
 else:
     st.markdown(f"**주소**: {road_address} (지번: {jibun_address})")
 
-# Display Kakao Map
-lat = loc_info.get('lat')
-lon = loc_info.get('lon')
-
-if lat and lon:
-    with st.expander("🗺️ 위치 개요도 보기"):
-        map_url = f"https://map.kakao.com/link/map/분석지역,{lat},{lon}"
-        components.html(
-            f'<iframe src="{map_url}" width="100%" height="400" style="border:none;"></iframe>', height=410)
-
-st.markdown(f"#### 🗺️ 관련 도엽 번호 ({len(map_sheets)}개)")
+st.markdown(f"#### 🗺️ 관련 도엽 번호 및 위치 ({len(map_sheets)}개)")
 if map_sheets:
     st.info(f"대표 도엽: **{map_sheets[0]}** 외 {len(map_sheets) - 1}개")
-    with st.expander("전체 도엽 번호 및 위치 보기"):
-        st.write(map_sheets)
-        preview_image = st.session_state.map_index_results.get(
-            'preview_image')
-        if preview_image:
-            st.image(preview_image, caption="도엽 참조 위치")
+    with st.expander("상세 지도 보기", expanded=True):
+        # --- New Folium Map Implementation ---
+        try:
+            # Retrieve data from session state
+            target_gdf = st.session_state.gdf
+            map_results = st.session_state.map_index_results
+            index_gdf = map_results.get('index_gdf')
+            target_sheets = st.session_state.matched_sheets
+
+            if index_gdf is None:
+                st.warning("지도 시각화를 위한 도엽 색인 원본 데이터가 없습니다.")
+            else:
+                # ===== 시각화용 좌표계 변환 (EPSG:4326) =====
+                index_4326 = index_gdf.to_crs(epsg=4326)
+                target_4326 = target_gdf.to_crs(epsg=4326)
+                target_poly = index_4326[index_4326['MAPIDCD_NO'].isin(
+                    target_sheets)]
+
+                # ===== Folium 지도 생성 =====
+                if not target_4326.empty:
+                    center = target_4326.geometry.unary_union.centroid
+                    # OpenStreetMap을 기본 지도로 설정하여 한글 지명 지원 및 기본 선택
+                    m = folium.Map(
+                        location=[center.y, center.x], zoom_start=12, tiles="OpenStreetMap")
+
+                    # Add other tile layers as options
+                    # folium.TileLayer(
+                    #    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr='Esri', name='위성 지도').add_to(m)
+
+                    # 원본 쉐이프 파일 경계 추가 (초록색)
+                    folium.GeoJson(
+                        target_4326,
+                        name="분석 영역",
+                        style_function=lambda x: {
+                            'color': 'green', 'weight': 3, 'fill': False}
+                    ).add_to(m)
+
+                    # 해당 도엽 추가 (빨간색)
+                    folium.GeoJson(
+                        target_poly,
+                        name="관련 도엽",
+                        style_function=lambda x: {
+                            'color': 'red', 'weight': 2, 'fillOpacity': 0.3},
+                        tooltip=folium.GeoJsonTooltip(
+                            fields=['MAPIDCD_NO'], aliases=['도엽 번호:'])
+                    ).add_to(m)
+
+                    folium.LayerControl().add_to(m)
+
+                    # Render the map
+                    st_folium(m, width='100%', height=500)
+                else:
+                    st.warning("분석 영역의 지오메트리가 비어 있어 지도를 표시할 수 없습니다.")
+
+        except Exception as e:
+            st.error(f"지도 생성 중 오류가 발생했습니다: {e}")
+            # Fallback to old image if it exists
+            preview_image = st.session_state.map_index_results.get(
+                'preview_image')
+            if preview_image:
+                st.image(preview_image, caption="오류 발생: 도엽 참조 위치 이미지로 대체 표시합니다.")
 else:
     st.warning("관련된 도엽 정보를 찾을 수 없습니다.")
 
@@ -192,12 +242,13 @@ with col2:
     if st.button("선택한 항목으로 분석 진행", type="primary", use_container_width=True):
         if selected_label:
             selected_key = analysis_items[selected_label]
-            
+
             if selected_key == 'dem_group':
-                st.session_state.selected_analysis_types = ['elevation', 'slope', 'aspect']
+                st.session_state.selected_analysis_types = [
+                    'elevation', 'slope', 'aspect']
             else:
                 st.session_state.selected_analysis_types = [selected_key]
-            
+
             st.switch_page("pages/03_처리중.py")
         else:
             st.warning("분석 항목을 선택해주세요.")
