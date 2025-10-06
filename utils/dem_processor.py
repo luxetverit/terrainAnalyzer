@@ -201,15 +201,13 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                         # Use as many bins as there are labels (+1 for the edges).
                         bins = full_bins[:len(labels) + 1]
 
-
-
                     binned_stats_result = calculate_binned_stats(
                         clipped_grid, bins, labels)
 
                     # Save the clipped grid to a new temporary TIF file
                     with tempfile.NamedTemporaryFile(suffix=f'_{analysis_type}.tif', delete=False) as tmp_clipped_file:
                         clipped_tif_path = tmp_clipped_file.name
-                    
+
                     # Get metadata from the source file to write the new TIF
                     with rasterio.open(temp_files_to_clean[analysis_type]) as src:
                         profile = src.profile
@@ -224,11 +222,11 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                         dst.write(clipped_grid, 1)
 
                     dem_results[analysis_type] = {
-                        'grid': clipped_grid, 
-                        'stats': grid_stats, 
+                        'grid': clipped_grid,
+                        'stats': grid_stats,
                         'binned_stats': binned_stats_result,
-                        'bins': bins, 
-                        'labels': labels, 
+                        'bins': bins,
+                        'labels': labels,
                         'palette_name': palette_name,
                         'tif_path': clipped_tif_path  # Add the path to the results
                     }
@@ -248,7 +246,7 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
             dem_results['hsg'] = {'gdf': gpd.read_postgis(
                 sql_hsg, engine, geom_col='geom')}
         if 'landcover' in selected_types:
-            sql_landcover = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', 5186)) AS geom, t1.* FROM public.kr_landcover_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
+            sql_landcover = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', 5186)) AS geom, t1.* FROM public.kr_landcover_map_l3 AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
             dem_results['landcover'] = {'gdf': gpd.read_postgis(
                 sql_landcover, engine, geom_col='geom')}
     return dem_results
