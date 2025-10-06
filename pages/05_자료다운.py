@@ -418,7 +418,7 @@ else:
                                 # Default to white if not in map
                                 color = color_map.get(code, '#FFFFFF')
                                 patch = mpatches.Patch(
-                                    color=color, label=f'{name} ({code})')
+                                    color=color, label=f'{name}')
                                 patches.append(patch)
 
                             if patches:
