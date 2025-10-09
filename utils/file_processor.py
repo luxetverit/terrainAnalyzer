@@ -156,7 +156,8 @@ def process_dxf_file(file_path, epsg_code):
 
 def process_shp_file(data, epsg_code):
     """
-    Process a SHP file path or a GeoDataFrame to extract closed polygons.
+    Process a SHP file path or a GeoDataFrame to extract closed polygons,
+    ensuring the data is in the correct CRS.
     """
     try:
         if isinstance(data, str):
@@ -166,9 +167,20 @@ def process_shp_file(data, epsg_code):
         else:
             raise TypeError("Input must be a file path or a GeoDataFrame.")
 
-        if gdf.crs is None:
-            gdf.set_crs(epsg=epsg_code, inplace=True)
+        # Standardize the target CRS format
+        target_crs = f"EPSG:{epsg_code}"
 
+        # 1. If CRS is missing, assign the user-selected one.
+        if gdf.crs is None:
+            st.warning(f"원본 데이터에 좌표계 정보가 없어, 사용자가 선택한 '{target_crs}'를 적용합니다.")
+            gdf.set_crs(epsg=epsg_code, inplace=True)
+        # 2. If CRS is different, reproject.
+        elif gdf.crs.to_string() != target_crs:
+            original_crs = gdf.crs.to_string()
+            st.info(f"원본 좌표계 '{original_crs}'를 사용자가 선택한 '{target_crs}'로 변환합니다.")
+            gdf = gdf.to_crs(epsg=epsg_code)
+
+        # Filter for valid Polygon or MultiPolygon geometries
         gdf = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])]
         gdf = gdf[gdf.geometry.is_valid]
 
@@ -176,3 +188,32 @@ def process_shp_file(data, epsg_code):
 
     except Exception as e:
         raise ValueError(f"Error processing SHP data: {str(e)}")
+
+
+def clip_geodataframe(target_gdf, clip_gdf):
+    """
+    Clips a target GeoDataFrame to the boundaries of a clipping GeoDataFrame.
+
+    Args:
+        target_gdf (gpd.GeoDataFrame): The GeoDataFrame to be clipped.
+        clip_gdf (gpd.GeoDataFrame): The GeoDataFrame defining the clipping boundaries.
+
+    Returns:
+        gpd.GeoDataFrame: The clipped GeoDataFrame.
+    """
+    if target_gdf.empty or clip_gdf.empty:
+        return gpd.GeoDataFrame(columns=target_gdf.columns, crs=target_gdf.crs)
+        
+    # Ensure both GeoDataFrames have the same CRS
+    if target_gdf.crs != clip_gdf.crs:
+        target_gdf = target_gdf.to_crs(clip_gdf.crs)
+
+    # Perform the clip
+    clipped_gdf = gpd.clip(target_gdf, clip_gdf, keep_geom_type=True)
+
+    # Filter out any invalid or empty geometries that might result from clipping
+    clipped_gdf = clipped_gdf[clipped_gdf.geometry.is_valid & ~
+                              clipped_gdf.geometry.is_empty]
+
+    return clipped_gdf
+

@@ -40,6 +40,21 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
 
     gdf = gdf.copy()
 
+    # --- [FINAL CLIP] Ensure output matches original user boundary ---
+    if 'gdf' in st.session_state:
+        original_gdf = st.session_state.gdf
+        if not original_gdf.empty:
+            # Ensure CRS match before clipping
+            if gdf.crs != original_gdf.crs:
+                gdf = gdf.to_crs(original_gdf.crs)
+            
+            # Perform the clip
+            gdf = gpd.clip(gdf, original_gdf, keep_geom_type=True)
+            if gdf.empty:
+                st.warning("최종 클리핑 후 SHP 파일로 변환할 유효한 데이터가 없습니다.")
+                return None
+    # --- End of Final Clip ---
+
     # Step 1: Force all elements to be geometry objects, correctly handling WKB.
     def force_to_geometry(geom):
         if isinstance(geom, str):
@@ -632,11 +647,16 @@ for analysis_type in valid_selected_types:
     if gdf is not None and not gdf.empty:
         class_col = title_info.get('class_col')
         if class_col and class_col in gdf.columns:
-            summary = gdf.groupby(class_col)[
-                'area'].sum().sort_values(ascending=False)
+            # [CRITICAL FIX 2] Use dissolve to merge geometries first, then calculate area.
+            # This correctly handles overlapping polygons from the source data.
+            dissolved_gdf = gdf.dissolve(by=class_col)
+            dissolved_gdf['area'] = dissolved_gdf.geometry.area
+            dissolved_gdf = dissolved_gdf.sort_values(by='area', ascending=False)
+
             summary_lines.append(
                 f"\n[{title_info.get('binned_label', '종류별 통계')}]")
-            for item, area in summary.items():
+            for item, row in dissolved_gdf.iterrows():
+                area = row['area']
                 percentage = (area / total_area_m2 *
                               100) if total_area_m2 > 0 else 0
                 summary_lines.append(

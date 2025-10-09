@@ -88,6 +88,7 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
     import richdem as rd
 
     from utils.config import get_db_engine
+    from utils.file_processor import clip_geodataframe
 
     engine = get_db_engine()
     dem_results = {}
@@ -237,16 +238,34 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
     if any(item in selected_types for item in ['soil', 'hsg', 'landcover']):
         user_geom = user_gdf_reprojected.union_all()
         user_wkt = user_geom.wkt
+
         if 'soil' in selected_types:
-            sql_soil = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', 5186)) AS geom, t1.* FROM public.kr_soil_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
-            dem_results['soil'] = {'gdf': gpd.read_postgis(
-                sql_soil, engine, geom_col='geom')}
+            sql_soil = f"SELECT * FROM public.kr_soil_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
+            soil_gdf = gpd.read_postgis(sql_soil, engine, geom_col='geometry')
+            if not soil_gdf.empty:
+                clipped_gdf = clip_geodataframe(soil_gdf, user_gdf_reprojected)
+                dem_results['soil'] = {'gdf': clipped_gdf}
+            else:
+                dem_results['soil'] = {'gdf': gpd.GeoDataFrame()}
+
+
         if 'hsg' in selected_types:
-            sql_hsg = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', 5186)) AS geom, t1.* FROM public.kr_hsg_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
-            dem_results['hsg'] = {'gdf': gpd.read_postgis(
-                sql_hsg, engine, geom_col='geom')}
+            sql_hsg = f"SELECT * FROM public.kr_hsg_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
+            hsg_gdf = gpd.read_postgis(sql_hsg, engine, geom_col='geometry')
+            if not hsg_gdf.empty:
+                clipped_gdf = clip_geodataframe(hsg_gdf, user_gdf_reprojected)
+                dem_results['hsg'] = {'gdf': clipped_gdf}
+            else:
+                dem_results['hsg'] = {'gdf': gpd.GeoDataFrame()}
+
+
         if 'landcover' in selected_types:
-            sql_landcover = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', 5186)) AS geom, t1.* FROM public.kr_landcover_map_l3 AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
-            dem_results['landcover'] = {'gdf': gpd.read_postgis(
-                sql_landcover, engine, geom_col='geom')}
+            sql_landcover = f"SELECT * FROM public.kr_landcover_map_l3 AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
+            landcover_gdf = gpd.read_postgis(sql_landcover, engine, geom_col='geometry')
+            if not landcover_gdf.empty:
+                clipped_gdf = clip_geodataframe(landcover_gdf, user_gdf_reprojected)
+                dem_results['landcover'] = {'gdf': clipped_gdf}
+            else:
+                dem_results['landcover'] = {'gdf': gpd.GeoDataFrame()}
+
     return dem_results
