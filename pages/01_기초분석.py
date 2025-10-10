@@ -41,6 +41,10 @@ st.set_page_config(page_title="기초 분석 - 지형 분석 서비스",
                    initial_sidebar_state="collapsed")
 apply_styles()
 
+
+
+
+
 # --- 2. Session State Check ---
 if 'temp_file_path' not in st.session_state:
     st.warning("업로드된 파일이 없습니다. 홈 페이지로 돌아가 파일을 업로드해주세요.")
@@ -163,7 +167,7 @@ if map_sheets:
 
                 # ===== Folium 지도 생성 =====
                 if not target_4326.empty:
-                    center = target_4326.geometry.unary_union.centroid
+                    center = target_4326.union_all().centroid
                     # OpenStreetMap을 기본 지도로 설정하여 한글 지명 지원 및 기본 선택
                     m = folium.Map(
                         location=[center.y, center.x], zoom_start=12, tiles="OpenStreetMap")
@@ -219,14 +223,32 @@ analysis_items = {
     "수문학적 토양군": "hsg",
 }
 
-option_labels = list(analysis_items.keys())
+# --- Initialize selection state ---
+if 'analysis_selections' not in st.session_state:
+    st.session_state.analysis_selections = {
+        label: (analysis_items[label] == 'dem_group') 
+        for label in analysis_items
+    }
 
-selected_label = st.radio(
-    "분석할 항목을 선택해주세요.",
-    options=option_labels,
-    index=0,  # Default to the first item
-    horizontal=True,
-)
+# --- Display stateful buttons in columns ---
+cols = st.columns(4)
+for i, label in enumerate(analysis_items.keys()):
+    with cols[i % 4]:
+        # Use primary type for selected, secondary for unselected
+        button_type = "primary" if st.session_state.analysis_selections.get(label) else "secondary"
+        if st.button(
+            label,
+            key=f"btn_{label}",
+            use_container_width=True,
+            type=button_type
+        ):
+            # Manually toggle the state
+            st.session_state.analysis_selections[label] = not st.session_state.analysis_selections[label]
+            # Provide feedback and force a rerun
+            new_state = "선택됨" if st.session_state.analysis_selections[label] else "선택 해제됨"
+            st.toast(f'{label}: {new_state}', icon='✅')
+            st.rerun()
+
 
 # --- 6. Navigation ---
 col1, col2 = st.columns(2)
@@ -240,15 +262,18 @@ with col1:
 
 with col2:
     if st.button("선택한 항목으로 분석 진행", type="primary", use_container_width=True):
-        if selected_label:
-            selected_key = analysis_items[selected_label]
-
-            if selected_key == 'dem_group':
-                st.session_state.selected_analysis_types = [
-                    'elevation', 'slope', 'aspect']
-            else:
-                st.session_state.selected_analysis_types = [selected_key]
-
+        final_analysis_types = []
+        for label, is_selected in st.session_state.analysis_selections.items():
+            if is_selected:
+                selected_key = analysis_items[label]
+                if selected_key == 'dem_group':
+                    final_analysis_types.extend(['elevation', 'slope', 'aspect'])
+                else:
+                    final_analysis_types.append(selected_key)
+        
+        if final_analysis_types:
+            # Remove duplicates and store in session state
+            st.session_state.selected_analysis_types = list(dict.fromkeys(final_analysis_types))
             st.switch_page("pages/03_처리중.py")
         else:
-            st.warning("분석 항목을 선택해주세요.")
+            st.warning("분석 항목을 하나 이상 선택해주세요.")

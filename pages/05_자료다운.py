@@ -559,25 +559,32 @@ pixel_size = st.session_state.get('pixel_size', 1.0)
 area_per_pixel = pixel_size * pixel_size
 
 # --- Calculate Total Area for the report header ---
+# [CRITICAL FIX] Use the area of the original user-provided geometry as the single source of truth.
+# This ensures the total area is consistent across all parts of the report.
 report_total_area_m2 = 0
-area_source_type = None
+if 'gdf' in st.session_state and not st.session_state.gdf.empty:
+    # Ensure the 'area' column exists before summing
+    if 'area' not in st.session_state.gdf.columns:
+        st.session_state.gdf['area'] = st.session_state.gdf.geometry.area
+    report_total_area_m2 = st.session_state.gdf.area.sum()
+else:
+    # Fallback for the unlikely case where the main GDF is missing
+    area_source_type = None
+    if 'elevation' in valid_selected_types:
+        area_source_type = 'elevation'
+    elif valid_selected_types:
+        area_source_type = valid_selected_types[0]
 
-# Prioritize 'elevation' for total area calculation
-if 'elevation' in valid_selected_types:
-    area_source_type = 'elevation'
-elif valid_selected_types:
-    area_source_type = valid_selected_types[0]
-
-if area_source_type:
-    results = dem_results[area_source_type]
-    stats = results.get('stats')
-    gdf = results.get('gdf')
-    if stats:
-        report_total_area_m2 = stats.get('area', 0) * area_per_pixel
-    elif gdf is not None and not gdf.empty:
-        if 'area' not in gdf.columns:
-            gdf['area'] = gdf.geometry.area
-        report_total_area_m2 = gdf.area.sum()
+    if area_source_type:
+        results = dem_results[area_source_type]
+        stats = results.get('stats')
+        gdf = results.get('gdf')
+        if stats:
+            report_total_area_m2 = stats.get('area', 0) * area_per_pixel
+        elif gdf is not None and not gdf.empty:
+            if 'area' not in gdf.columns:
+                gdf['area'] = gdf.geometry.area
+            report_total_area_m2 = gdf.area.sum()
 
 # General Info
 summary_lines.append(f"분석 일시: {analysis_date}")
@@ -665,8 +672,7 @@ for analysis_type in valid_selected_types:
                                 '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
         else:
             # This part is tricky, as total area for GDF is already calculated above.
-            # We just add the line to the text summary.
-            summary_lines.append(f"- 총 분석 면적: {int(total_area_m2):,} m²")
+            # We will not add another 'Total Area' line to avoid confusion with the main report header.
             if class_col:
                 summary_lines.append(
                     f"- (상세 면적 통계를 계산하려면 '{class_col}' 컬럼이 필요합니다.)")
@@ -714,6 +720,14 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         if tif_path and Path(tif_path).exists():
             zip_file.write(tif_path, arcname=f"{analysis_type}.tif")
 
+    # Add SHP files to zip by unzipping and re-adding contents
+    for analysis_type, data in shp_buffers.items():
+        inner_zip_buffer = data["buffer"]
+        with zipfile.ZipFile(inner_zip_buffer, 'r') as inner_zip:
+            for file_info in inner_zip.infolist():
+                # To avoid putting files in a subdirectory, write them directly
+                zip_file.writestr(file_info.filename, inner_zip.read(file_info.filename))
+
 zip_buffer.seek(0)
 
 # --- 8. Final Download Section ---
@@ -722,26 +736,34 @@ st.markdown("### 📥 다운로드")
 # --- Create a list of all download items ---
 download_items = []
 
+# Define dynamic label and help text for the main zip button
+main_zip_label = "📥 시각화자료+분석보고서 (ZIP)"
+main_zip_help = "분석 리포트, 모든 분석도(PNG), 모든 원본 분석 파일(TIF)을 한번에 다운로드합니다."
+
+if shp_buffers:  # If SHP files were generated and are included
+    main_zip_label = "📥 시각화자료+분석보고서+SHP (ZIP)"
+    main_zip_help = "분석 리포트, 모든 분석도(PNG), 모든 원본 분석 파일(TIF), 벡터 데이터(SHP)를 한번에 다운로드합니다."
+
 # Add the main ZIP download first
 download_items.append({
-    "label": "📥 시각화자료+분석보고서 (ZIP)",
+    "label": main_zip_label,
     "data": zip_buffer,
     "file_name": f"analysis_results_{base_filename}_{timestamp}.zip",
     "mime": "application/zip",
     "key": "main_zip_download",
-    "help": "분석 리포트, 모든 분석도(PNG), 모든 원본 분석 파일(TIF)을 한번에 다운로드합니다."
+    "help": main_zip_help
 })
 
-# Add the individual SHP downloads
-for analysis_type, data in shp_buffers.items():
-    download_items.append({
-        "label": f"📥 {data['title']} (SHP)",
-        "data": data['buffer'],
-        "file_name": f"{analysis_type}_{base_filename}_{timestamp}.zip",
-        "mime": "application/zip",
-        "key": f"shp_download_bottom_{analysis_type}",
-        "help": f"{data['title']} 분석 결과를 SHP 파일로 다운로드합니다."
-    })
+# The individual SHP downloads are now included in the main zip, so this is disabled.
+# for analysis_type, data in shp_buffers.items():
+#     download_items.append({
+#         "label": f"📥 {data['title']} (SHP)",
+#         "data": data['buffer'],
+#         "file_name": f"{analysis_type}_{base_filename}_{timestamp}.zip",
+#         "mime": "application/zip",
+#         "key": f"shp_download_bottom_{analysis_type}",
+#         "help": f"{data['title']} 분석 결과를 SHP 파일로 다운로드합니다."
+#     })
 
 # --- Create columns and display buttons ---
 if download_items:

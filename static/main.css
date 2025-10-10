@@ -73,33 +73,47 @@ h1, h2, h3 {
    Streamlit Widget Overrides
    ========================================================================== */
 
-/* General Button Style */
-div[data-testid="stButton"] > button {
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
+/* --- Stateful Selection Buttons & General Button Styles --- */
+
+/* Unselected state - targets the secondary button */
+div[data-testid="stButton"] > button[kind="secondary"] {
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
+    border: 1px solid #000000 !important;
     border-radius: var(--border-radius);
     padding: 0.75rem 1.5rem;
     font-weight: 600;
     font-size: 1rem;
-    transition: background-color 0.2s ease;
+    transition: all 0.2s ease;
 }
 
-div[data-testid="stButton"] > button:hover {
-    background-color: var(--primary-color-dark);
-    color: white;
+div[data-testid="stButton"] > button[kind="secondary"]:hover {
+    background-color: #f0f0f0 !important;
+    color: #000000 !important;
 }
 
-div[data-testid="stButton"] > button:focus {
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+/* Selected state - targets the primary button */
+div[data-testid="stButton"] > button[kind="primary"] {
+    background-color: var(--primary-color) !important;
+    color: #FFFFFF !important;
+    border: 1px solid var(--primary-color) !important;
+    border-radius: var(--border-radius);
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: all 0.2s ease;
 }
 
-/* Secondary Button Style */
-div[data-testid="stButton"] > button.secondary {
-    background-color: var(--secondary-color);
+div[data-testid="stButton"] > button[kind="primary"]:hover {
+    background-color: var(--primary-color-dark) !important;
+    color: #FFFFFF !important;
 }
-div[data-testid="stButton"] > button.secondary:hover {
-    background-color: #5a6268;
+
+/* Fallback for any button that doesn't have a kind */
+div[data-testid="stButton"] > button {
+    background-color: #FFFFFF;
+    color: #000000;
+    border: 1px solid #000000;
 }
 
 

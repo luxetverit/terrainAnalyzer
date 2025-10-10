@@ -84,6 +84,7 @@ epsg_options = {
     "EPSG:5185 / Korea 2000 / West Belt 2010": 5185,
     "EPSG:5187 / Korea 2000 / East Belt 2010": 5187,
     "EPSG:5179 / Korea 2000 / Unified CS": 5179,
+    "EPSG:5176 / Korea 1985 / Modified East Belt": 5176,
     "EPSG:5174 / Korea 1985 / Central Belt": 5174,
     "EPSG:4326 / WGS84": 4326,
 }
