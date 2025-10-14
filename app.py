@@ -7,7 +7,7 @@ from pathlib import Path
 import pyproj
 import streamlit as st
 
-# --- PROJ Data Directory Configuration (Cross-Platform Final Version) ---
+# --- PROJ 데이터 디렉토리 설정 (모든 플랫폼 호환 최종 버전) ---
 try:
     conda_prefix = Path(sys.prefix)
     if platform.system() == "Windows":
@@ -24,7 +24,7 @@ try:
             f"--- CRITICAL WARNING: Pyproj data directory not found at {proj_data_dir}. CRS transformations may fail. ---")
 except Exception as e:
     print(f"--- ERROR during pyproj configuration: {e} ---")
-# --- End of Configuration ---
+# --- 설정 종료 ---
 
 from utils.file_processor import validate_file
 from utils.theme_util import apply_styles
@@ -36,7 +36,7 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 
-# --- 1. Page Configuration and Styling ---
+# --- 1. 페이지 설정 및 스타일링 ---
 st.set_page_config(
     page_title="지형 분석 서비스",
     page_icon="🗺️",
@@ -44,14 +44,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Apply global styles from main.css
+# main.css의 전역 스타일 적용
 apply_styles()
 
-# --- 2. Session State Initialization ---
+# --- 2. 세션 상태 초기화 ---
 if "upload_counter" not in st.session_state:
     st.session_state.upload_counter = 0
 
-# --- 3. Page Header ---
+# --- 3. 페이지 헤더 ---
 st.markdown(
     """
 <div class="page-header">
@@ -62,17 +62,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- 4. Main Content ---
+# --- 4. 메인 콘텐츠 ---
 
 st.subheader("1. 분석할 파일 업로드")
 
-# Use a unique key for the file uploader to allow re-uploads
+# 재업로드를 허용하기 위해 파일 업로더에 고유 키 사용
 upload_key = f"file_uploader_{st.session_state.upload_counter}"
 uploaded_file = st.file_uploader(
     "조사하고 싶은 공간의 SHP 파일(ZIP으로 압축)이나, DXF 파일을 업로드해주세요.",
     type=["dxf", "zip"],
     key=upload_key,
-    label_visibility="visible",  # Make label visible for clarity
+    label_visibility="visible",  # 명확성을 위해 라벨을 보이게 설정
 )
 
 st.subheader("2. 원본 좌표계 선택")
@@ -93,7 +93,7 @@ selected_epsg_name = st.selectbox(
 )
 epsg_code = epsg_options[selected_epsg_name]
 
-# --- 5. File Processing and Navigation ---
+# --- 5. 파일 처리 및 탐색 ---
 temp_file_path_for_next = None
 if uploaded_file:
     logging.info(f"--- 파일 업로드 감지: {uploaded_file.name} ---")
@@ -114,16 +114,15 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 if st.button("다음 단계로 이동", use_container_width=True, type="primary"):
     if uploaded_file and temp_file_path_for_next:
-        # Store necessary info in session state for the next page
+        # 다음 페이지를 위해 세션 상태에 필요한 정보 저장
         st.session_state.uploaded_file_name = uploaded_file.name
         st.session_state.temp_file_path = temp_file_path_for_next
         st.session_state.epsg_code = epsg_code
         st.session_state.selected_epsg_name = selected_epsg_name
 
-        # Increment counter for next upload
+        # 다음 업로드를 위해 카운터 증가
         st.session_state.upload_counter += 1
 
         st.switch_page("pages/01_기초분석.py")
     else:
-        st.warning("분석을 진행하려면 먼저 유효한 파일을 업로드해야 합니다.")
         st.warning("분석을 진행하려면 먼저 유효한 파일을 업로드해야 합니다.")

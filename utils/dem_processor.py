@@ -14,13 +14,13 @@ from scipy.interpolate import griddata
 from shapely.geometry import MultiPolygon, Polygon
 
 from utils.color_palettes import get_palette
-from utils.plot_helpers import generate_aspect_bins  # Note: aspect bins only
+from utils.plot_helpers import generate_aspect_bins  # 참고: 경사향 구간만
 from utils.plot_helpers import (generate_custom_intervals,
                                 generate_slope_intervals)
 
 
 def calculate_binned_stats(grid, bins, labels):
-    """Calculates statistics for a grid based on predefined bins and labels."""
+    """사전 정의된 구간과 라벨을 기반으로 그리드에 대한 통계를 계산합니다."""
     grid_flat = grid[~np.isnan(grid)]
     if grid_flat.size == 0:
         return []
@@ -64,7 +64,7 @@ def extract_points_from_geometries(gdf, elevation_col='elevation'):
 
 
 def get_pixel_size_from_db(engine, subbasin_name, default_size=1.0):
-    """Fetches pixel size for a given sub-basin from the database."""
+    """데이터베이스에서 주어진 소유역에 대한 픽셀 크기를 가져옵니다."""
     try:
         from sqlalchemy import text
         with engine.connect() as connection:
@@ -146,7 +146,7 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
 
             if 'aspect' in selected_types:
                 aspect_arr = rd.TerrainAttribute(dem_rd, attrib='aspect')
-                # Set aspect to -1 where slope is 0 to mark flat areas
+                # 경사가 0인 곳의 경사향을 -1로 설정하여 평평한 지역으로 표시
                 aspect_arr[np.isclose(slope_arr, 0)] = -1
                 with tempfile.NamedTemporaryFile(suffix='.tif', delete=False) as atmp:
                     aspect_tif_path = atmp.name
@@ -184,8 +184,8 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                         palette_name = 'aspect_5'
                         palette_data = get_palette(palette_name)
 
-                        # Find and move the 'Flat' label to the front to match the bin order
-                        # The first bin from generate_aspect_bins() is for 'Flat'.
+                        # 'Flat' 라벨을 찾아 앞으로 이동하여 구간 순서와 일치시킴
+                        # generate_aspect_bins()의 첫 번째 구간은 'Flat'용입니다.
                         flat_label_item = None
                         for item in palette_data:
                             if item['bin_label'].strip().lower() == 'flat':
@@ -199,20 +199,20 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                         labels = [item['bin_label'] for item in palette_data]
                         full_bins = generate_aspect_bins()
 
-                        # Use as many bins as there are labels (+1 for the edges).
+                        # 라벨 수만큼의 구간을 사용합니다 (+1은 가장자리용).
                         bins = full_bins[:len(labels) + 1]
 
                     binned_stats_result = calculate_binned_stats(
                         clipped_grid, bins, labels)
 
-                    # Save the clipped grid to a new temporary TIF file
+                    # 잘라낸 그리드를 새 임시 TIF 파일에 저장
                     with tempfile.NamedTemporaryFile(suffix=f'_{analysis_type}.tif', delete=False) as tmp_clipped_file:
                         clipped_tif_path = tmp_clipped_file.name
 
-                    # Get metadata from the source file to write the new TIF
+                    # 소스 파일에서 메타데이터를 가져와 새 TIF 작성
                     with rasterio.open(temp_files_to_clean[analysis_type]) as src:
                         profile = src.profile
-                        # Update profile for the clipped grid
+                        # 잘라낸 그리드에 대한 프로필 업데이트
                         profile.update({
                             'height': clipped_grid.shape[0],
                             'width': clipped_grid.shape[1],
@@ -229,7 +229,7 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                         'bins': bins,
                         'labels': labels,
                         'palette_name': palette_name,
-                        'tif_path': clipped_tif_path  # Add the path to the results
+                        'tif_path': clipped_tif_path  # 결과에 경로 추가
                     }
         for path in temp_files_to_clean.values():
             if path and os.path.exists(path):

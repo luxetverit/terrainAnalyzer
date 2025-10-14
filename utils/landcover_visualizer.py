@@ -11,7 +11,7 @@ from utils.config import get_db_engine
 
 def get_landcover_data_from_db():
     """
-    Fetches landcover data (code, name, color) from the database.
+    데이터베이스에서 토지피복 데이터(코드, 이름, 색상)를 가져옵니다.
     """
     try:
         engine = get_db_engine()

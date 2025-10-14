@@ -4,7 +4,7 @@ import streamlit as st
 
 from utils.theme_util import apply_styles
 
-# --- 1. Page Configuration and Styling ---
+# --- 1. 페이지 설정 및 스타일링 ---
 st.set_page_config(
     page_title="분석 중 - 지형 분석 서비스",
     page_icon="⚙️",
@@ -13,7 +13,7 @@ st.set_page_config(
 )
 apply_styles()
 
-# --- 2. Session State Check ---
+# --- 2. 세션 상태 확인 ---
 if "selected_analysis_types" not in st.session_state:
     st.warning(
         "분석 항목이 선택되지 않았습니다. 이전 페이지로 돌아가 항목을 선택해주세요."
@@ -22,7 +22,7 @@ if "selected_analysis_types" not in st.session_state:
         st.switch_page("pages/01_기초분석.py")
     st.stop()
 
-# --- 3. Processing Simulation ---
+# --- 3. 처리 시뮬레이션 ---
 st.markdown(
     """
     <div class="page-header" style="margin-top: -1.5rem;">
@@ -35,15 +35,15 @@ st.markdown(
 
 
 with st.container():
-    # This is a placeholder for the actual long-running analysis.
-    # The real heavy lifting happens on the next page, but this simulates
-    # a processing step for better UX.
+    # 실제 실행 분석을 위한 임시 페이지 입니다.
+    # 실제 힘든 작업은 다음 페이지에서 발생하지만, 여기서는 더 나은 UX를 위해
+    # 처리 단계를 시뮬레이션합니다.
 
     progress_text = "분석을 준비하고 있습니다..."
     progress_bar = st.progress(0, text=progress_text)
 
     for percent_complete in range(100):
-        time.sleep(0.02)  # Simulate work
+        time.sleep(0.02)  # 작업 시뮬레이션
         if percent_complete < 20:
             progress_text = "분석 환경을 설정하고 있습니다..."
         elif percent_complete < 60:
@@ -57,7 +57,5 @@ with st.container():
     st.success("분석 준비가 완료되었습니다. 분석 페이지로 이동합니다.")
     time.sleep(1)
 
-# --- 4. Switch to Next Page ---
-st.switch_page("pages/04_분석.py")
-# --- 4. Switch to Next Page ---
+# --- 4. 다음 페이지로 전환 ---
 st.switch_page("pages/04_분석.py")

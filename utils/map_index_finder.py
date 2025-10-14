@@ -3,12 +3,12 @@ from pathlib import Path
 import platform
 import pyproj
 
-# --- PROJ Data Directory Configuration (v2 - More Robust) ---
-# This block tries multiple strategies to find the PROJ data directory,
-# which is essential for accurate CRS transformations.
+# --- PROJ 데이터 디렉토리 설정 (v2 - 더 견고한 방식) ---
+# 이 블록은 PROJ 데이터 디렉토리를 찾기 위해 여러 전략을 시도합니다.
+# 이는 정확한 CRS 변환에 필수적입니다.
 try:
     found_path = None
-    # Strategy 1: Use pyproj's own mechanism
+    # 전략 1: pyproj 자체 메커니즘 사용
     try:
         pyproj_data_dir = Path(pyproj.datadir.get_data_dir())
         if pyproj_data_dir.exists():
@@ -17,7 +17,7 @@ try:
     except Exception:
         print("pyproj.datadir.get_data_dir() failed, trying other methods.")
 
-    # Strategy 2: Check standard Conda path if first failed
+    # 전략 2: 첫 번째 전략 실패 시 표준 Conda 경로 확인
     if not found_path:
         conda_prefix = Path(sys.prefix)
         if platform.system() == "Windows":
@@ -28,7 +28,7 @@ try:
             found_path = conda_path
             print(f"Found PROJ data in Conda path: {found_path}")
 
-    # Strategy 3: Check standard venv/pip site-packages path
+    # 전략 3: 표준 venv/pip site-packages 경로 확인
     if not found_path:
         for path in sys.path:
             if "site-packages" in path:
@@ -46,7 +46,7 @@ try:
 
 except Exception as e:
     print(f"CRITICAL: An unexpected error occurred while setting pyproj data directory: {e}")
-# --- End of Configuration ---
+# --- 설정 종료 ---
 
 """
 인덱스 파일(GPKG)을 사용하여 업로드된 경계 파일과 겹치는 도엽 번호를 찾는 유틸리티
@@ -90,21 +90,21 @@ def find_overlapping_sheets(gdf, epsg_code):
         print(f"  - 변환 후 경계: {gdf_transformed.total_bounds}")
 
         # --- 경계 좌표 비교 ---
-        source_bounds = gdf.total_bounds # Original bounds before any CRS operation
+        source_bounds = gdf.total_bounds # CRS 작업 전 원본 경계
         transformed_bounds = gdf_transformed.total_bounds
-        # Compare string representations of CRS to avoid issues with object comparison
+        # 객체 비교 문제를 피하기 위해 CRS의 문자열 표현을 비교
         if np.allclose(source_bounds, transformed_bounds) and str(gdf.set_crs(f"EPSG:{epsg_code}").crs) != str(map_index.crs):
             print("\n[경고] 좌표계 변환이 일어났으나, 경계 좌표가 거의 동일합니다.")
             print("       입력하신 EPSG 코드가 파일의 실제 좌표계와 일치하는지 확인해주세요.")
             print("       (또는 pyproj 데이터 디렉토리 설정이 잘못되었을 수 있습니다.)")
 
-        # --- 공간 조인 (Overlap Detection) ---
+        # --- 공간 조인 (겹침 감지) ---
         print("\n[3] 공간 조인(sjoin)으로 겹치는 도엽 검색")
         overlapping_sheets = gpd.sjoin(map_index, gdf_transformed, how="inner", predicate="intersects")
 
         if overlapping_sheets.empty:
             print("  - 결과: 겹치는 도엽을 찾지 못했습니다.")
-            print("--- 도엽 인덱스 검색 디버깅 종료 ---\n")
+            print("--- 도엽 인덱스 검색 디버깅 종료 ---\\n")
             return {'matched_sheets': [], 'mapsheet_info': [], 'preview_image': None}
 
         print(f"  - 결과: {len(overlapping_sheets)}개의 겹치는 항목을 찾았습니다.")
@@ -119,7 +119,7 @@ def find_overlapping_sheets(gdf, epsg_code):
             })
 
         print(f"최종 겹치는 도엽 수: {len(unique_overlaps)}")
-        print("--- 도엽 인덱스 검색 디버깅 종료 ---\n")
+        print("--- 도엽 인덱스 검색 디버깅 종료 ---\\n")
 
         extended_overlaps = set(unique_overlaps)
         for sheet_id in unique_overlaps:
@@ -142,7 +142,7 @@ def find_overlapping_sheets(gdf, epsg_code):
         all_sheet_ids = sorted(list(extended_overlaps))
         print(f"인근 도엽 포함 후 총 도엽 수: {len(all_sheet_ids)}")
 
-        # Pass the transformed GDF to the preview function
+        # 변환된 GDF를 미리보기 함수에 전달
         preview_image = create_preview_image(gdf_transformed, map_index, all_sheet_ids, unique_overlaps)
 
         return {
@@ -168,7 +168,7 @@ def create_preview_image(gdf, map_index, matched_sheets, original_matched_sheets
     
     background_color = '#0E1117' if dark_mode else 'white'
     text_color = 'white' if dark_mode else 'black'
-    # ... (rest of the function is styling and can be omitted for brevity) ...
+    # ... (나머지 함수는 스타일링 관련이며 간결성을 위해 생략 가능) ...
     
     fig, ax = plt.subplots(figsize=(10, 8))
     fig.patch.set_facecolor(background_color)
@@ -183,7 +183,7 @@ def create_preview_image(gdf, map_index, matched_sheets, original_matched_sheets
         ax.set_xlim(plot_bounds[0], plot_bounds[2])
         ax.set_ylim(plot_bounds[1], plot_bounds[3])
 
-    # Plotting logic...
+    # 플로팅 로직...
     gdf.plot(ax=ax, edgecolor='red', facecolor='none', linewidth=2)
     matching_index.plot(ax=ax, edgecolor='blue', facecolor='lightblue', alpha=0.5)
 

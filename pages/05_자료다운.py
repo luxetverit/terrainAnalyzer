@@ -12,7 +12,7 @@ import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import shapefile  # Use the newly installed pyshp library
+import shapefile  # 새로 설치된 pyshp 라이브러리 사용
 import streamlit as st
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Polygon, Rectangle
@@ -22,40 +22,45 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform
 
 from utils.color_palettes import get_landcover_colormap, get_palette
-from utils.plot_helpers import (add_north_arrow, add_scalebar_vector,
-                                adjust_ax_limits,
-                                calculate_accurate_scalebar_params,
-                                create_hillshade, create_padded_fig_ax,
-                                draw_accurate_scalebar, generate_aspect_bins,
-                                generate_custom_intervals,
-                                generate_slope_intervals)
+from utils.plot_helpers import (
+    add_north_arrow,
+    add_scalebar_vector,
+    adjust_ax_limits,
+    calculate_accurate_scalebar_params,
+    create_hillshade,
+    create_padded_fig_ax,
+    draw_accurate_scalebar,
+    generate_aspect_bins,
+    generate_custom_intervals,
+    generate_slope_intervals,
+)
 from utils.theme_util import apply_styles
 
 
-# --- Helper function for SHP export using pyshp ---
+# --- pyshp를 사용한 SHP 내보내기 도우미 함수 ---
 def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesIO | None:
-    """Converts a GeoDataFrame to a zipped Shapefile in memory using the pyshp library."""
+    """GeoDataFrame을 메모리에서 pyshp 라이브러리를 사용하여 압축된 Shapefile로 변환합니다."""
     if gdf.empty:
         return None
 
     gdf = gdf.copy()
 
-    # --- [FINAL CLIP] Ensure output matches original user boundary ---
+    # --- [최종 클립] 출력이 원본 사용자 경계와 일치하는지 확인 ---
     if 'gdf' in st.session_state:
         original_gdf = st.session_state.gdf
         if not original_gdf.empty:
-            # Ensure CRS match before clipping
+            # 클리핑 전 CRS 일치 확인
             if gdf.crs != original_gdf.crs:
                 gdf = gdf.to_crs(original_gdf.crs)
             
-            # Perform the clip
+            # 클립 수행
             gdf = gpd.clip(gdf, original_gdf, keep_geom_type=True)
             if gdf.empty:
                 st.warning("최종 클리핑 후 SHP 파일로 변환할 유효한 데이터가 없습니다.")
                 return None
-    # --- End of Final Clip ---
+    # --- 최종 클립 종료 ---
 
-    # Step 1: Force all elements to be geometry objects, correctly handling WKB.
+    # 단계 1: 모든 요소를 지오메트리 객체로 강제 변환하고 WKB를 올바르게 처리합니다.
     def force_to_geometry(geom):
         if isinstance(geom, str):
             try:
@@ -65,21 +70,21 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
         return geom if isinstance(geom, BaseGeometry) else None
     gdf['geometry'] = gdf['geometry'].apply(force_to_geometry)
 
-    # Step 2: Force all geometries to 2D.
+    # 단계 2: 모든 지오메트리를 2D로 강제 변환합니다.
     def drop_z(geom):
         if geom is None or not geom.has_z:
             return geom
         return transform(lambda x, y, z=None: (x, y), geom)
     gdf['geometry'] = gdf['geometry'].apply(drop_z)
 
-    # Step 3: Filter out any null or invalid geometries.
+    # 단계 3: null이거나 유효하지 않은 지오메트리를 필터링합니다.
     gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty &
               gdf.geometry.is_valid]
     if gdf.empty:
         st.warning("SHP 파일로 변환할 유효한 데이터가 없습니다. (데이터 정제 후)")
         return None
 
-    # Step 4: Truncate column names for Shapefile compatibility.
+    # 단계 4: Shapefile 호환성을 위해 컬럼 이름을 자릅니다.
     gdf.columns = [str(col) for col in gdf.columns]
     rename_dict = {}
     for col in gdf.columns:
@@ -95,14 +100,14 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
     if rename_dict:
         gdf = gdf.rename(columns=rename_dict)
 
-    # Step 5: Write to shapefile using pyshp.
+    # 단계 5: pyshp를 사용하여 shapefile에 씁니다.
     with tempfile.TemporaryDirectory() as tmpdir:
         shp_path = str(Path(tmpdir) / f"{base_filename}.shp")
         try:
             with shapefile.Writer(shp_path) as w:
-                w.autoBalance = 1  # Ensure consistency
+                w.autoBalance = 1  # 일관성 보장
 
-                # Define fields from GeoDataFrame columns
+                # GeoDataFrame 컬럼에서 필드 정의
                 for col_name, dtype in gdf.dtypes.items():
                     if col_name.lower() == 'geometry':
                         continue
@@ -115,7 +120,7 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
                     else:
                         w.field(col_name, 'C', size=254)
 
-                # Write geometries and records
+                # 지오메트리 및 레코드 작성
                 for index, row in gdf.iterrows():
                     w.shape(row.geometry)
 
@@ -126,7 +131,7 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
 
                         value = row[col_name]
 
-                        # Handle potential NaN values before writing the record
+                        # 레코드를 작성하기 전에 잠재적인 NaN 값 처리
                         if pd.isna(value):
                             dtype = gdf[col_name].dtype
                             if pd.api.types.is_integer_dtype(dtype):
@@ -134,13 +139,13 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
                             elif pd.api.types.is_float_dtype(dtype):
                                 value = 0.0
                             else:
-                                value = ''  # Default for strings/other types
+                                value = ''  # 문자열/기타 유형의 기본값
 
                         record_values.append(value)
 
                     w.record(*record_values)
 
-            # Zip the created files
+            # 생성된 파일 압축
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 for file_path in Path(tmpdir).glob(f'{base_filename}.*'):
@@ -153,7 +158,7 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
             return None
 
 
-# --- Prepare base filename for downloads ---
+# --- 다운로드를 위한 기본 파일 이름 준비 ---
 uploaded_file_name = st.session_state.get('uploaded_file_name', 'untitled')
 base_filename = Path(uploaded_file_name).stem
 timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
@@ -161,43 +166,43 @@ timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
 plot_figures = {}
 shp_buffers = {}
 
-# --- 0. Matplotlib Font Configuration ---
+# --- 0. Matplotlib 글꼴 구성 ---
 if platform.system() == 'Windows':
     plt.rc('font', family='Malgun Gothic')
 else:
-    # For Linux, ensure 'NanumGothic' is installed.
+    # Linux의 경우 'NanumGothic'이 설치되어 있는지 확인합니다.
     # sudo apt-get install -y fonts-nanum*
     plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
-# --- 1. Page Configuration and Styling ---
+# --- 1. 페이지 설정 및 스타일링 ---
 st.set_page_config(page_title="분석 결과 - 지형 분석 서비스",
                    page_icon="📊",
                    layout="wide",
                    initial_sidebar_state="collapsed")
 apply_styles()
 
-# --- 2. Session State Check ---
+# --- 2. 세션 상태 확인 ---
 if 'dem_results' not in st.session_state:
     st.warning("분석 결과가 없습니다. 홈 페이지로 돌아가 분석을 먼저 실행해주세요.")
     if st.button("홈으로 돌아가기"):
         st.switch_page("app.py")
     st.stop()
 
-# --- 3. Data Loading from Session ---
+# --- 3. 세션에서 데이터 로드 ---
 dem_results = st.session_state.dem_results
 selected_types = st.session_state.get('selected_analysis_types', [])
 matched_sheets = st.session_state.get('matched_sheets', [])
 analysis_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
-# --- 4. Page Header ---
+# --- 4. 페이지 헤더 ---
 cols = st.columns([0.95, 0.05])
 with cols[0]:
     st.markdown('''<div class="page-header" style="margin-top: -1.5rem;"><h1>분석 결과</h1><p>선택하신 항목에 대한 지형 분석 결과입니다.</p></div>''',
                 unsafe_allow_html=True)
 with cols[1]:
     if st.button("🏠", help="홈 화면으로 돌아갑니다.", use_container_width=True):
-        # Clean up temporary TIF files before clearing session state
+        # 세션 상태를 지우기 전에 임시 TIF 파일 정리
         if 'dem_results' in st.session_state:
             for analysis_type in st.session_state.dem_results:
                 results = st.session_state.dem_results.get(analysis_type, {})
@@ -213,7 +218,7 @@ with cols[1]:
                 del st.session_state[key]
         st.switch_page("app.py")
 
-# --- 6. 2D Analysis Results (in Tabs) ---
+# --- 6. 2D 분석 결과 (탭) ---
 st.markdown("### 📈 2D 상세 분석 결과")
 analysis_map = {
     'elevation': {'title': "표고 분석", 'unit': "m", 'binned_label': "표고 구간별 면적"},
@@ -228,7 +233,7 @@ valid_selected_types = [t for t in selected_types if t in dem_results]
 if not valid_selected_types:
     st.info("표시할 2D 분석 결과가 없습니다.")
 else:
-    # Loop through each analysis type and display its results sequentially
+    # 각 분석 유형을 반복하고 결과를 순차적으로 표시합니다.
     for analysis_type in valid_selected_types:
         with st.container(border=True):
             st.markdown(
@@ -239,20 +244,20 @@ else:
             grid = results.get('grid')
             gdf = results.get('gdf')
 
-            # [OPTIMIZATION 1] Halve memory usage of the grid by changing data type
+            # [최적화 1] 데이터 유형을 변경하여 그리드의 메모리 사용량을 절반으로 줄입니다.
             if grid is not None:
                 grid = grid.astype(np.float32)
 
-                # [OPTIMIZATION 2 & Scalebar Fix] Dynamic Downsampling and Pixel Size Adjustment
+                # [최적화 2 & 축척 막대 수정] 동적 다운샘플링 및 픽셀 크기 조정
                 effective_pixel_size = st.session_state.get('pixel_size', 1.0)
-                PIXEL_THRESHOLD = 5_000_000  # Approx 2500x2000 image
+                PIXEL_THRESHOLD = 5_000_000  # 약 2500x2000 이미지
                 if grid.size > PIXEL_THRESHOLD:
                     downsample_factor = (PIXEL_THRESHOLD / grid.size) ** 0.5
                     st.info(
                         f"ℹ️ 분석 영역이 매우 커서 시각화 해상도를 원본의 {downsample_factor:.1%}로 자동 조정합니다.")
-                    # order=1 for bilinear interpolation
+                    # order=1은 이중 선형 보간을 의미합니다.
                     grid = zoom(grid, downsample_factor, order=1)
-                    # Adjust pixel size to match the new resolution for accurate scale bar
+                    # 정확한 축척 막대를 위해 새 해상도와 일치하도록 픽셀 크기 조정
                     effective_pixel_size = effective_pixel_size / downsample_factor
 
             if stats:
@@ -268,9 +273,9 @@ else:
                 title = analysis_map.get(analysis_type, {}).get(
                     'title', analysis_type)
                 with st.spinner(f"'{title}' 분석도를 생성하는 중입니다..."):
-                    # --- Unified DEM Analysis Plotting ---
+                    # --- 통합 DEM 분석 플로팅 ---
 
-                    # Retrieve all visualization info from the results dictionary
+                    # 결과 사전에서 모든 시각화 정보 검색
                     bins = results.get('bins')
                     labels = results.get('labels')
                     palette_name = results.get('palette_name')
@@ -284,7 +289,7 @@ else:
                         st.warning(f"'{palette_name}' 팔레트를 DB에서 찾을 수 없습니다.")
                         continue
 
-                    # For aspect, reorder the palette to put 'Flat' first, matching the data processing.
+                    # 경사향의 경우, 데이터 처리와 일치하도록 팔레트를 재정렬하여 'Flat'을 먼저 배치합니다.
                     if analysis_type == 'aspect':
                         flat_label_item = None
                         for item in palette_data:
@@ -298,11 +303,11 @@ else:
 
                     colors = [item['hex_color'] for item in palette_data]
 
-                    # Create colormap and normalization
+                    # 컬러맵 및 정규화 생성
                     cmap = ListedColormap(colors)
                     norm = BoundaryNorm(bins, cmap.N)
 
-                    # --- Plotting ---
+                    # --- 플로팅 ---
                     fig, ax = create_padded_fig_ax(figsize=(10, 8))
                     ax.set_title(title, fontsize=16, pad=20)
 
@@ -364,11 +369,11 @@ else:
 
                         clabels = ax.clabel(
                             contour, levels=label_levels, inline=True, fontsize=8, fmt='%.0f')
-                        # [Readability Improvement] Add a white stroke to contour labels
+                        # [가독성 향상] 등고선 라벨에 흰색 테두리 추가
                         plt.setp(clabels, fontweight='bold', path_effects=[
                                  path_effects.withStroke(linewidth=3, foreground='w')])
 
-                    # --- Legend and Map Elements ---
+                    # --- 범례 및 지도 요소 ---
                     patches = [mpatches.Patch(color=color, label=label)
                                for color, label in zip(colors, labels)]
                     legend_titles = {
@@ -384,7 +389,7 @@ else:
                                        edgecolor='black')
                     legend.get_title().set_fontweight('bold')
 
-                    # Force edge color and width on legend patches
+                    # 범례 패치에 테두리 색상 및 너비 강제 적용
                     for legend_patch in legend.get_patches():
                         legend_patch.set_edgecolor('black')
                         legend_patch.set_linewidth(0.7)
@@ -397,7 +402,7 @@ else:
                         fig, ax, effective_pixel_size, scale_params, grid.shape)
                     ax.axis('off')
 
-                    # --- Display and Download ---
+                    # --- 표시 및 다운로드 ---
                     img_buffer = io.BytesIO()
                     fig.savefig(img_buffer, format='png',
                                 bbox_inches='tight', dpi=150)
@@ -413,24 +418,24 @@ else:
                     type_info = analysis_map.get(analysis_type, {})
                     class_col = type_info.get('class_col')
 
-                    # Landcover custom color logic
+                    # 토지피복도 사용자 정의 색상 로직
                     if analysis_type == 'landcover':
-                        # Check if color map is loaded and required columns exist
+                        # 컬러맵이 로드되었고 필요한 컬럼이 존재하는지 확인
                         color_map = get_landcover_colormap()
                         if color_map and 'l2_code' in gdf.columns and 'l2_name' in gdf.columns:
                             gdf['plot_color'] = gdf['l2_code'].map(color_map)
-                            # Plot with the specified colors, handling potential missing colors
+                            # 지정된 색상으로 플롯, 잠재적인 누락 색상 처리
                             gdf.plot(ax=ax, color=gdf['plot_color'].fillna(
                                 '#FFFFFF'), linewidth=0.5, edgecolor='k')
 
-                            # Create a custom legend
+                            # 사용자 정의 범례 생성
                             unique_cats = gdf[['l2_code', 'l2_name']].drop_duplicates(
                             ).sort_values(by='l2_code')
                             patches = []
                             for _, row in unique_cats.iterrows():
                                 code = row['l2_code']
                                 name = row['l2_name']
-                                # Default to white if not in map
+                                # 맵에 없으면 흰색으로 기본값 설정
                                 color = color_map.get(code, '#FFFFFF')
                                 patch = mpatches.Patch(
                                     color=color, label=f'{name}')
@@ -442,23 +447,23 @@ else:
                                 legend = ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
                                                    bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
                                                    ncol=n_cols)
-                                # Force edge color and width on legend patches
+                                # 범례 패치에 테두리 색상 및 너비 강제 적용
                                 for legend_patch in legend.get_patches():
                                     legend_patch.set_edgecolor('black')
                                     legend_patch.set_linewidth(0.7)
                         else:
-                            # Fallback for landcover if custom colors fail
+                            # 사용자 정의 색상 실패 시 토지피복도 대체 로직
                             gdf.plot(column=class_col, ax=ax, legend=True, categorical=True,
                                      legend_kwds={'title': type_info.get('legend_title', '분류'), 'bbox_to_anchor': (1.05, 1), 'loc': 'upper left'})
 
-                    # Logic for other vector types (soil, hsg)
+                    # 다른 벡터 유형(토양, hsg)에 대한 로직
                     else:
                         if class_col and class_col in gdf.columns:
                             gdf_plot = gdf[gdf[class_col].notna()].copy()
                             unique_cats = sorted(gdf_plot[class_col].unique())
 
                             num_cats = len(unique_cats)
-                            # Use 'tab20' for up to 20 categories, then a sampled colormap for more
+                            # 최대 20개 범주에는 'tab20'을 사용하고, 그 이상은 샘플링된 컬러맵을 사용합니다.
                             if num_cats <= 20:
                                 cmap = plt.cm.get_cmap('tab20', num_cats)
                                 colors = cmap.colors
@@ -483,7 +488,7 @@ else:
                                 legend = ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
                                                    bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small',
                                                    ncol=n_cols)
-                                # Force edge color and width on legend patches
+                                # 범례 패치에 테두리 색상 및 너비 강제 적용
                                 for legend_patch in legend.get_patches():
                                     legend_patch.set_edgecolor('black')
                                     legend_patch.set_linewidth(0.7)
@@ -498,34 +503,34 @@ else:
                     adjust_ax_limits(ax)
                     add_north_arrow(ax)
 
-                    # --- Unify Scalebar to match DEM style ---
-                    # 1. Get map dimensions in meters from the plot axes
+                    # --- DEM 스타일과 일치하도록 축척 막대 통합 ---
+                    # 1. 플롯 축에서 미터 단위의 지도 치수 가져오기
                     x_min, x_max = ax.get_xlim()
                     map_width_m = x_max - x_min
 
-                    # 2. Create a proxy for image shape and pixel size
-                    #    (based on savefig dpi and figsize)
+                    # 2. 이미지 모양 및 픽셀 크기에 대한 프록시 생성
+                    #    (savefig dpi 및 figsize 기반)
                     dpi = 150
-                    # The figsize used in create_padded_fig_ax
+                    # create_padded_fig_ax에서 사용된 figsize
                     figsize_w, figsize_h = (10, 10)
                     proxy_img_width_px = int(figsize_w * dpi)
                     proxy_img_height_px = int(figsize_h * dpi)
                     proxy_img_shape = (proxy_img_height_px, proxy_img_width_px)
 
-                    # effective_pixel_size is meters/pixel
+                    # effective_pixel_size는 미터/픽셀입니다.
                     if proxy_img_width_px > 0:
                         effective_pixel_size = map_width_m / proxy_img_width_px
                     else:
-                        effective_pixel_size = 1.0  # Fallback
+                        effective_pixel_size = 1.0  # 대체
 
-                    # 3. Calculate and draw the accurate scalebar
+                    # 3. 정확한 축척 막대 계산 및 그리기
                     scale_params = calculate_accurate_scalebar_params(
                         effective_pixel_size, proxy_img_shape, 50, fig, ax)
                     draw_accurate_scalebar(
                         fig, ax, effective_pixel_size, scale_params, proxy_img_shape)
                     ax.axis('off')
 
-                    # --- Display and Store Buffer ---
+                    # --- 표시 및 버퍼 저장 ---
                     img_buffer = io.BytesIO()
                     fig.savefig(img_buffer, format='png',
                                 bbox_inches='tight', dpi=150)
@@ -547,28 +552,28 @@ else:
 
             else:
                 st.info("시각화할 2D 데이터가 없습니다.")
-            st.markdown("---")  # Add a separator between analyses
-# --- 7. Summary and Final Download ---
+            st.markdown("---")  # 분석 사이에 구분선 추가
+# --- 7. 요약 및 최종 다운로드 ---
 st.markdown("### 📋 상세 분석 보고서")
 
-# --- Generate Data for TXT Summary (for display) and CSV (for download) ---
+# --- TXT 요약(표시용) 및 CSV(다운로드용) 데이터 생성 ---
 summary_lines = []
 csv_data = []
 
 pixel_size = st.session_state.get('pixel_size', 1.0)
 area_per_pixel = pixel_size * pixel_size
 
-# --- Calculate Total Area for the report header ---
-# [CRITICAL FIX] Use the area of the original user-provided geometry as the single source of truth.
-# This ensures the total area is consistent across all parts of the report.
+# --- 보고서 헤더의 총 면적 계산 ---
+# [중요 수정] 원본 사용자 제공 지오메트리의 면적을 유일한 기준으로 사용합니다.
+# 이렇게 하면 보고서의 모든 부분에서 총 면적이 일관되게 유지됩니다.
 report_total_area_m2 = 0
 if 'gdf' in st.session_state and not st.session_state.gdf.empty:
-    # Ensure the 'area' column exists before summing
+    # 합산하기 전에 'area' 컬럼이 있는지 확인
     if 'area' not in st.session_state.gdf.columns:
         st.session_state.gdf['area'] = st.session_state.gdf.geometry.area
     report_total_area_m2 = st.session_state.gdf.area.sum()
 else:
-    # Fallback for the unlikely case where the main GDF is missing
+    # 주 GDF가 없는 드문 경우에 대한 대체 로직
     area_source_type = None
     if 'elevation' in valid_selected_types:
         area_source_type = 'elevation'
@@ -586,7 +591,7 @@ else:
                 gdf['area'] = gdf.geometry.area
             report_total_area_m2 = gdf.area.sum()
 
-# General Info
+# 일반 정보
 summary_lines.append(f"분석 일시: {analysis_date}")
 summary_lines.append(
     f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
@@ -610,7 +615,7 @@ csv_data.append({'분석 구분': '기본 정보', '항목': '총 분석 면적'
                 '면적(m²)': f"{int(report_total_area_m2):,}", '비율(%)': ''})
 summary_lines.append("")
 
-# Analysis-specific Info
+# 분석별 정보
 for analysis_type in valid_selected_types:
     stats = dem_results[analysis_type].get('stats')
     binned_stats = dem_results[analysis_type].get('binned_stats')
@@ -654,8 +659,8 @@ for analysis_type in valid_selected_types:
     if gdf is not None and not gdf.empty:
         class_col = title_info.get('class_col')
         if class_col and class_col in gdf.columns:
-            # [CRITICAL FIX 2] Use dissolve to merge geometries first, then calculate area.
-            # This correctly handles overlapping polygons from the source data.
+            # [중요 수정 2] 먼저 dissolve를 사용하여 지오메트리를 병합한 다음 면적을 계산합니다.
+            # 이렇게 하면 소스 데이터의 중첩된 폴리곤을 올바르게 처리합니다.
             dissolved_gdf = gdf.dissolve(by=class_col)
             dissolved_gdf['area'] = dissolved_gdf.geometry.area
             dissolved_gdf = dissolved_gdf.sort_values(by='area', ascending=False)
@@ -671,15 +676,15 @@ for analysis_type in valid_selected_types:
                 csv_data.append({'분석 구분': title, '항목': item, '값': '', '단위': '',
                                 '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
         else:
-            # This part is tricky, as total area for GDF is already calculated above.
-            # We will not add another 'Total Area' line to avoid confusion with the main report header.
+            # 이 부분은 GDF의 총 면적이 이미 위에서 계산되었기 때문에 까다롭습니다.
+            # 주 보고서 헤더와의 혼동을 피하기 위해 다른 '총 면적' 줄을 추가하지 않습니다.
             if class_col:
                 summary_lines.append(
                     f"- (상세 면적 통계를 계산하려면 '{class_col}' 컬럼이 필요합니다.)")
 
     summary_lines.append("")
 
-# --- Create Display Text and CSV String ---
+# --- 표시 텍스트 및 CSV 문자열 생성 ---
 summary_text = "\n".join(summary_lines)
 report_df = pd.DataFrame(csv_data)
 csv_buffer = io.StringIO()
@@ -687,21 +692,21 @@ report_df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
 csv_string = csv_buffer.getvalue()
 
 
-# Display Summary Text Area
+# 요약 텍스트 영역 표시
 st.text_area("", summary_text, height=400)
 
-# --- Create Final ZIP and Download Button ---
+# --- 최종 ZIP 생성 및 다운로드 버튼 ---
 zip_buffer = io.BytesIO()
 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-    # Add summary CSV to zip
+    # zip에 요약 CSV 추가
     zip_file.writestr(
         f"analysis_summary_{timestamp}.csv", csv_string)
 
-    # Add plot images to zip
+    # zip에 플롯 이미지 추가
     for analysis_type, fig in plot_figures.items():
         img_buffer = io.BytesIO()
 
-        # Re-check toggle state for correct filename
+        # 올바른 파일 이름을 위해 토글 상태 다시 확인
         use_hillshade = st.session_state.get(
             f"hillshade_{analysis_type}", False)
         file_name_suffix = "_hillshade" if analysis_type == 'elevation' and use_hillshade else ""
@@ -711,40 +716,40 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
 
         zip_file.writestr(
             f"{analysis_type}_analysis{file_name_suffix}.png", img_buffer.getvalue())
-        plt.close(fig)  # Close the figure after saving
+        plt.close(fig)  # 저장 후 그림 닫기
 
-    # Add analysis TIF files to zip
+    # zip에 분석 TIF 파일 추가
     for analysis_type in valid_selected_types:
         results = dem_results.get(analysis_type, {})
         tif_path = results.get('tif_path')
         if tif_path and Path(tif_path).exists():
             zip_file.write(tif_path, arcname=f"{analysis_type}.tif")
 
-    # Add SHP files to zip by unzipping and re-adding contents
+    # zip의 압축을 풀고 내용을 다시 추가하여 zip에 SHP 파일 추가
     for analysis_type, data in shp_buffers.items():
         inner_zip_buffer = data["buffer"]
         with zipfile.ZipFile(inner_zip_buffer, 'r') as inner_zip:
             for file_info in inner_zip.infolist():
-                # To avoid putting files in a subdirectory, write them directly
+                # 파일을 하위 디렉토리에 넣지 않으려면 직접 작성합니다.
                 zip_file.writestr(file_info.filename, inner_zip.read(file_info.filename))
 
 zip_buffer.seek(0)
 
-# --- 8. Final Download Section ---
+# --- 8. 최종 다운로드 섹션 ---
 st.markdown("### 📥 다운로드")
 
-# --- Create a list of all download items ---
+# --- 모든 다운로드 항목 목록 생성 ---
 download_items = []
 
-# Define dynamic label and help text for the main zip button
+# 주 zip 버튼에 대한 동적 라벨 및 도움말 텍스트 정의
 main_zip_label = "📥 시각화자료+분석보고서 (ZIP)"
 main_zip_help = "분석 리포트, 모든 분석도(PNG), 모든 원본 분석 파일(TIF)을 한번에 다운로드합니다."
 
-if shp_buffers:  # If SHP files were generated and are included
+if shp_buffers:  # SHP 파일이 생성되어 포함된 경우
     main_zip_label = "📥 시각화자료+분석보고서+SHP (ZIP)"
     main_zip_help = "분석 리포트, 모든 분석도(PNG), 모든 원본 분석 파일(TIF), 벡터 데이터(SHP)를 한번에 다운로드합니다."
 
-# Add the main ZIP download first
+# 주 ZIP 다운로드를 먼저 추가
 download_items.append({
     "label": main_zip_label,
     "data": zip_buffer,
@@ -754,7 +759,7 @@ download_items.append({
     "help": main_zip_help
 })
 
-# The individual SHP downloads are now included in the main zip, so this is disabled.
+# 개별 SHP 다운로드는 이제 주 zip에 포함되므로 비활성화됩니다.
 # for analysis_type, data in shp_buffers.items():
 #     download_items.append({
 #         "label": f"📥 {data['title']} (SHP)",
@@ -765,7 +770,7 @@ download_items.append({
 #         "help": f"{data['title']} 분석 결과를 SHP 파일로 다운로드합니다."
 #     })
 
-# --- Create columns and display buttons ---
+# --- 열 생성 및 버튼 표시 ---
 if download_items:
     cols = st.columns(len(download_items))
     for i, item in enumerate(download_items):
@@ -780,11 +785,11 @@ if download_items:
                 help=item["help"]
             )
 
-st.markdown("")  # Spacer
+st.markdown("")  # 스페이서
 
-# --- Final Buttons ---
+# --- 최종 버튼 ---
 if st.button("새로운 분석 시작하기", use_container_width=True):
-    # Clean up temporary TIF files before clearing session state
+    # 세션 상태를 지우기 전에 임시 TIF 파일 정리
     if 'dem_results' in st.session_state:
         for analysis_type in st.session_state.dem_results:
             results = st.session_state.dem_results.get(analysis_type, {})

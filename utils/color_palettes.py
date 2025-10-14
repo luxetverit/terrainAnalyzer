@@ -1,8 +1,8 @@
 """
-Color palettes collection for visualization of analysis results
+분석 결과 시각화를 위한 색상 팔레트 모음
 """
 
-# Spectral palette (default)
+# 스펙트럼 팔레트 (기본값)
 SPECTRAL = [
     "#5E4FA2",
     "#3288BD",
@@ -16,7 +16,7 @@ SPECTRAL = [
     "#D53E4F",
 ]
 
-# Red-Yellow-Green palette
+# 빨강-노랑-초록 팔레트
 RDYLGN = [
     "#A50026",
     "#D73027",
@@ -30,7 +30,7 @@ RDYLGN = [
     "#1A9850",
 ]
 
-# Terrain palette
+# 지형 팔레트
 TERRAIN = [
     "#333366",
     "#336699",
@@ -44,7 +44,7 @@ TERRAIN = [
     "#FF3333",
 ]
 
-# Viridis palette
+# Viridis 팔레트
 VIRIDIS = [
     "#440154",
     "#482777",
@@ -58,7 +58,7 @@ VIRIDIS = [
     "#FDE725",
 ]
 
-# Inferno palette
+# Inferno 팔레트
 INFERNO = [
     "#000004",
     "#1B0C41",
@@ -72,7 +72,7 @@ INFERNO = [
     "#FCFFA4",
 ]
 
-# Grayscale palette
+# 회색조 팔레트
 GREYS = [
     "#000000",
     "#1C1C1C",
@@ -86,7 +86,7 @@ GREYS = [
     "#FFFFFF",
 ]
 
-# Brown palette (new)
+# 갈색 팔레트 (신규)
 BROWN = [
     "#f7f1e1",
     "#e6d8b9",
@@ -100,7 +100,7 @@ BROWN = [
     "#1a0a04",
 ]
 
-# All palettes in a dictionary
+# 모든 팔레트를 딕셔너리에 저장
 ALL_PALETTES = {
     "spectral": {"name": "Spectral", "colors": SPECTRAL},
     "rdylgn": {"name": "Red-Yellow-Green", "colors": RDYLGN},
@@ -114,20 +114,20 @@ ALL_PALETTES = {
 
 def get_palette_preview_html(palette_key):
     """
-    Generate HTML preview for a color palette.
+    색상 팔레트의 HTML 미리보기를 생성합니다.
 
-    Parameters:
+    매개변수:
     -----------
     palette_key : str
-        Palette key (e.g., 'spectral', 'viridis')
+        팔레트 키 (예: 'spectral', 'viridis')
 
-    Returns:
+    반환값:
     --------
     str
-        HTML code for palette preview
+        팔레트 미리보기를 위한 HTML 코드
     """
     if palette_key not in ALL_PALETTES:
-        palette_key = "spectral"  # Default value
+        palette_key = "spectral"  # 기본값
 
     colors = ALL_PALETTES[palette_key]["colors"]
     width = 100 / len(colors)
@@ -146,13 +146,13 @@ from utils.config import get_db_engine
 
 def get_landcover_colormap():
     """
-    Reads the landcover color map from the database.
+    데이터베이스에서 토지피복 색상 맵을 읽어옵니다.
 
-    Returns:
+    반환값:
     --------
     dict
-        A dictionary mapping L2_CODE (str) to a hex color string (str).
-        Returns an empty dictionary if the connection fails.
+        L2_CODE(str)를 16진수 색상 문자열(str)에 매핑하는 딕셔너리.
+        연결에 실패하면 빈 딕셔너리를 반환합니다.
     """
     try:
         engine = get_db_engine()
@@ -175,14 +175,14 @@ import streamlit as st
 @st.cache_data
 def get_palette(palette_name: str):
     """
-    Fetches a specific color palette from the database.
+    데이터베이스에서 특정 색상 팔레트를 가져옵니다.
 
-    Args:
-        palette_name (str): The name of the palette to fetch (e.g., 'elevation_10').
+    인자:
+        palette_name (str): 가져올 팔레트의 이름 (예: 'elevation_10').
 
-    Returns:
-        list: A list of dicts, where each dict has 'bin_label' and 'hex_color'.
-              Returns an empty list on failure.
+    반환값:
+        list: 각 딕셔너리에 'bin_label'과 'hex_color'가 포함된 딕셔너리 리스트.
+              실패 시 빈 리스트를 반환합니다.
     """
     try:
         engine = get_db_engine()

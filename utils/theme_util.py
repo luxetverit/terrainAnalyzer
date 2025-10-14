@@ -4,7 +4,7 @@ import os
 
 def apply_styles():
     """
-    Loads and applies the global CSS stylesheet.
+    전역 CSS 스타일시트를 로드하고 적용합니다.
     """
     css_file_path = os.path.join("static", "main.css")
     try:
@@ -12,4 +12,4 @@ def apply_styles():
             css = f.read()
         st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
-        st.error(f"Fatal Error: Global stylesheet not found at '{css_file_path}'.")
+        st.error(f"치명적 오류: 전역 스타일시트를 '{css_file_path}'에서 찾을 수 없습니다.")
