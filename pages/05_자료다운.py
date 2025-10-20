@@ -22,18 +22,13 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform
 
 from utils.color_palettes import get_landcover_colormap, get_palette
-from utils.plot_helpers import (
-    add_north_arrow,
-    add_scalebar_vector,
-    adjust_ax_limits,
-    calculate_accurate_scalebar_params,
-    create_hillshade,
-    create_padded_fig_ax,
-    draw_accurate_scalebar,
-    generate_aspect_bins,
-    generate_custom_intervals,
-    generate_slope_intervals,
-)
+from utils.plot_helpers import (add_north_arrow, add_scalebar_vector,
+                                adjust_ax_limits,
+                                calculate_accurate_scalebar_params,
+                                create_hillshade, create_padded_fig_ax,
+                                draw_accurate_scalebar, generate_aspect_bins,
+                                generate_custom_intervals,
+                                generate_slope_intervals)
 from utils.theme_util import apply_styles
 
 
@@ -52,7 +47,7 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
             # 클리핑 전 CRS 일치 확인
             if gdf.crs != original_gdf.crs:
                 gdf = gdf.to_crs(original_gdf.crs)
-            
+
             # 클립 수행
             gdf = gpd.clip(gdf, original_gdf, keep_geom_type=True)
             if gdf.empty:
@@ -170,8 +165,6 @@ shp_buffers = {}
 if platform.system() == 'Windows':
     plt.rc('font', family='Malgun Gothic')
 else:
-    # Linux의 경우 'NanumGothic'이 설치되어 있는지 확인합니다.
-    # sudo apt-get install -y fonts-nanum*
     plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -250,7 +243,7 @@ else:
 
                 # [최적화 2 & 축척 막대 수정] 동적 다운샘플링 및 픽셀 크기 조정
                 effective_pixel_size = st.session_state.get('pixel_size', 1.0)
-                PIXEL_THRESHOLD = 5_000_000  # 약 2500x2000 이미지
+                PIXEL_THRESHOLD = 5_000_000  # 5_000_000=5백만, 약 2500x2000 이미지
                 if grid.size > PIXEL_THRESHOLD:
                     downsample_factor = (PIXEL_THRESHOLD / grid.size) ** 0.5
                     st.info(
@@ -564,8 +557,7 @@ pixel_size = st.session_state.get('pixel_size', 1.0)
 area_per_pixel = pixel_size * pixel_size
 
 # --- 보고서 헤더의 총 면적 계산 ---
-# [중요 수정] 원본 사용자 제공 지오메트리의 면적을 유일한 기준으로 사용합니다.
-# 이렇게 하면 보고서의 모든 부분에서 총 면적이 일관되게 유지됩니다.
+# 원본 사용자 제공 지오메트리의 면적을 유일한 기준으로 사용.
 report_total_area_m2 = 0
 if 'gdf' in st.session_state and not st.session_state.gdf.empty:
     # 합산하기 전에 'area' 컬럼이 있는지 확인
@@ -663,7 +655,8 @@ for analysis_type in valid_selected_types:
             # 이렇게 하면 소스 데이터의 중첩된 폴리곤을 올바르게 처리합니다.
             dissolved_gdf = gdf.dissolve(by=class_col)
             dissolved_gdf['area'] = dissolved_gdf.geometry.area
-            dissolved_gdf = dissolved_gdf.sort_values(by='area', ascending=False)
+            dissolved_gdf = dissolved_gdf.sort_values(
+                by='area', ascending=False)
 
             summary_lines.append(
                 f"\n[{title_info.get('binned_label', '종류별 통계')}]")
@@ -731,7 +724,8 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         with zipfile.ZipFile(inner_zip_buffer, 'r') as inner_zip:
             for file_info in inner_zip.infolist():
                 # 파일을 하위 디렉토리에 넣지 않으려면 직접 작성합니다.
-                zip_file.writestr(file_info.filename, inner_zip.read(file_info.filename))
+                zip_file.writestr(file_info.filename,
+                                  inner_zip.read(file_info.filename))
 
 zip_buffer.seek(0)
 

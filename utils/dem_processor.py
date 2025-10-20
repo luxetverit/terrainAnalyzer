@@ -16,6 +16,7 @@ from shapely.geometry import MultiPolygon, Polygon
 from utils.color_palettes import get_palette
 from utils.plot_helpers import generate_aspect_bins  # 참고: 경사향 구간만
 from utils.plot_helpers import (generate_custom_intervals,
+                                generate_detailed_slope_intervals,
                                 generate_slope_intervals)
 
 
@@ -178,8 +179,13 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                                 grid_stats['min'], grid_stats['max'], num_divisions)
                         else:  # slope
                             palette_name = f'slope_{num_divisions}'
-                            bins, labels = generate_slope_intervals(
-                                num_divisions)
+                            # 경사도 90% 값이 10도 미만이면 완만하다고 판단, 세부 구간 사용
+                            if np.nanpercentile(clipped_grid[~np.isnan(clipped_grid)], 90) < 10:
+                                bins, labels = generate_detailed_slope_intervals(
+                                    num_divisions)
+                            else:
+                                bins, labels = generate_slope_intervals(
+                                    num_divisions)
                     elif analysis_type == 'aspect':
                         palette_name = 'aspect_5'
                         palette_data = get_palette(palette_name)

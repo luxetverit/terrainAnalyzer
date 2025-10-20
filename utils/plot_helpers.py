@@ -186,6 +186,38 @@ def generate_slope_intervals(num_divisions=8):
     return bins, labels
 
 
+def generate_detailed_slope_intervals(num_divisions=8):
+    """경사 분석을 위한 구간과 라벨을 생성합니다. 완만한 경사에 더 많은 구간을 할당합니다."""
+    if num_divisions < 1:
+        return [], []
+
+    # 완만한 경사에 더 세분화된 구간을 제공합니다.
+    if num_divisions <= 4:
+        bins = [0, 3, 7, 15, 90]
+    elif num_divisions <= 6:
+        bins = [0, 2, 4, 6, 10, 20, 90]
+    elif num_divisions <= 8:
+        bins = [0, 1, 2, 3, 5, 7, 10, 15, 90]
+    else:  # 9개 이상
+        bins = [0, 1, 2, 3, 4, 5, 7, 10, 15, 30, 90]
+
+    # num_divisions에 맞게 구간 수 조정
+    if len(bins) > num_divisions + 1:
+        bins = bins[:num_divisions]
+        bins.append(90)
+
+    labels = []
+    for i in range(len(bins) - 1):
+        lower = bins[i]
+        upper = bins[i+1]
+        if i == len(bins) - 2:
+            labels.append(f"{lower}°+")
+        else:
+            labels.append(f"{lower}-{upper}°")
+
+    return bins, labels
+
+
 def generate_aspect_bins():
     """경사향 분석을 위한 표준 구간을 생성합니다."""
     bins = [-2, -0.5, 22.5, 67.5, 112.5,

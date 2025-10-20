@@ -35,9 +35,7 @@ st.markdown(
 
 
 with st.container():
-    # 실제 실행 분석을 위한 임시 페이지 입니다.
-    # 실제 힘든 작업은 다음 페이지에서 발생하지만, 여기서는 더 나은 UX를 위해
-    # 처리 단계를 시뮬레이션합니다.
+    # 실제 실행 분석을 위한 임시 페이지
 
     progress_text = "분석을 준비하고 있습니다..."
     progress_bar = st.progress(0, text=progress_text)
