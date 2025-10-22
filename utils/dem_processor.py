@@ -107,15 +107,33 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                        buffer_m, user_bounds[2] + buffer_m, user_bounds[3] + buffer_m)
     bbox_wkt = f"POLYGON(({expanded_bounds[0]} {expanded_bounds[1]}, {expanded_bounds[2]} {expanded_bounds[1]}, {expanded_bounds[2]} {expanded_bounds[3]}, {expanded_bounds[0]} {expanded_bounds[3]}, {expanded_bounds[0]} {expanded_bounds[1]}))"
     sql = f"SELECT geometry, elevation FROM kr_contour_map WHERE ST_Intersects(geometry, ST_GeomFromText('{bbox_wkt}', 5186));"
-    contour_gdf = gpd.read_postgis(sql, engine, geom_col='geometry')
 
     dem_needed = any(item in selected_types for item in [
                      'elevation', 'slope', 'aspect'])
     if dem_needed:
-        if contour_gdf.empty:
-            raise ValueError("표고 분석에 필요한 등고선 데이터를 데이터베이스에서 찾을 수 없습니다.")
-        contour_gdf = contour_gdf.to_crs(target_crs)
-        xs, ys, zs = extract_points_from_geometries(contour_gdf, 'elevation')
+        all_xs, all_ys, all_zs = [], [], []
+        try:
+            contour_iterator = gpd.read_postgis(sql, engine, geom_col='geometry', chunksize=10000)
+            is_empty = True
+            for contour_chunk in contour_iterator:
+                is_empty = False
+                contour_chunk = contour_chunk.to_crs(target_crs)
+                xs, ys, zs = extract_points_from_geometries(contour_chunk, 'elevation')
+                if xs.size > 0:
+                    all_xs.append(xs)
+                    all_ys.append(ys)
+                    all_zs.append(zs)
+            if is_empty:
+                raise ValueError("표고 분석에 필요한 등고선 데이터를 데이터베이스에서 찾을 수 없습니다.")
+        except Exception as e:
+            raise ValueError(f"데이터베이스에서 등고선 데이터를 읽는 중 오류 발생: {e}")
+
+        if not all_xs:
+            raise ValueError("데이터베이스에서 추출한 등고선 데이터에 유효한 고도 포인트가 없습니다.")
+
+        xs = np.concatenate(all_xs)
+        ys = np.concatenate(all_ys)
+        zs = np.concatenate(all_zs)
         if xs.size == 0:
             raise ValueError("데이터베이스에서 추출한 등고선 데이터에 유효한 고도 포인트가 없습니다.")
 
@@ -245,33 +263,41 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
         user_geom = user_gdf_reprojected.union_all()
         user_wkt = user_geom.wkt
 
-        if 'soil' in selected_types:
-            sql_soil = f"SELECT * FROM public.kr_soil_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
-            soil_gdf = gpd.read_postgis(sql_soil, engine, geom_col='geometry')
-            if not soil_gdf.empty:
-                clipped_gdf = clip_geodataframe(soil_gdf, user_gdf_reprojected)
-                dem_results['soil'] = {'gdf': clipped_gdf}
-            else:
-                dem_results['soil'] = {'gdf': gpd.GeoDataFrame()}
+        analysis_configs = {
+            'soil': 'public.kr_soil_map',
+            'hsg': 'public.kr_hsg_map',
+            'landcover': 'public.kr_landcover_map_l3'
+        }
 
+        for analysis_type, table_name in analysis_configs.items():
+            if analysis_type in selected_types:
+                sql = f"SELECT * FROM {table_name} AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
+                
+                try:
+                    iterator = gpd.read_postgis(sql, engine, geom_col='geometry', chunksize=5000)
+                    clipped_chunks = []
+                    for chunk in iterator:
+                        if not chunk.empty:
+                            # Ensure chunk has the correct CRS before clipping
+                            if chunk.crs is None:
+                                chunk.set_crs(user_gdf_reprojected.crs, inplace=True)
+                            elif chunk.crs != user_gdf_reprojected.crs:
+                                chunk = chunk.to_crs(user_gdf_reprojected.crs)
+                            
+                            clipped_chunk = clip_geodataframe(chunk, user_gdf_reprojected)
+                            if not clipped_chunk.empty:
+                                clipped_chunks.append(clipped_chunk)
+                    
+                    if clipped_chunks:
+                        # Concatenate all clipped chunks into a single GeoDataFrame
+                        final_gdf = gpd.GeoDataFrame(pd.concat(clipped_chunks, ignore_index=True), crs=user_gdf_reprojected.crs)
+                        dem_results[analysis_type] = {'gdf': final_gdf}
+                    else:
+                        dem_results[analysis_type] = {'gdf': gpd.GeoDataFrame(crs=user_gdf_reprojected.crs)}
 
-        if 'hsg' in selected_types:
-            sql_hsg = f"SELECT * FROM public.kr_hsg_map AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
-            hsg_gdf = gpd.read_postgis(sql_hsg, engine, geom_col='geometry')
-            if not hsg_gdf.empty:
-                clipped_gdf = clip_geodataframe(hsg_gdf, user_gdf_reprojected)
-                dem_results['hsg'] = {'gdf': clipped_gdf}
-            else:
-                dem_results['hsg'] = {'gdf': gpd.GeoDataFrame()}
-
-
-        if 'landcover' in selected_types:
-            sql_landcover = f"SELECT * FROM public.kr_landcover_map_l3 AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
-            landcover_gdf = gpd.read_postgis(sql_landcover, engine, geom_col='geometry')
-            if not landcover_gdf.empty:
-                clipped_gdf = clip_geodataframe(landcover_gdf, user_gdf_reprojected)
-                dem_results['landcover'] = {'gdf': clipped_gdf}
-            else:
-                dem_results['landcover'] = {'gdf': gpd.GeoDataFrame()}
+                except Exception as e:
+                    # In case of an error (e.g., table not found), store an empty GeoDataFrame
+                    print(f"Error processing {analysis_type}: {e}")
+                    dem_results[analysis_type] = {'gdf': gpd.GeoDataFrame(crs=user_gdf_reprojected.crs)}
 
     return dem_results
