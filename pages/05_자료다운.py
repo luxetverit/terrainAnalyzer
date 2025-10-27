@@ -95,7 +95,18 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
     if rename_dict:
         gdf = gdf.rename(columns=rename_dict)
 
-    # 단계 5: pyshp를 사용하여 shapefile에 씁니다.
+    # 단계 5: 도형 단순화 (pyshp 오류 방지)
+    # Shapefile 형식은 단일 도형의 꼭짓점 수를 약 65,535개로 제한합니다.
+    # 매우 복잡한 폴리곤은 이 제한을 초과하여 'ushort format' 오류를 발생시킬 수 있습니다.
+    # simplify()를 사용하여 꼭짓점 수를 줄여 이 문제를 해결합니다.
+    # CRS가 미터 단위이므로, 0.5m의 허용 오차는 시각적 품질에 거의 영향을 주지 않습니다.
+    try:
+        gdf['geometry'] = gdf.simplify(tolerance=0.5, preserve_topology=True)
+    except Exception as e:
+        st.warning(f"도형 단순화 중 오류 발생: {e}. 원본 도형으로 계속 진행합니다.")
+
+
+    # 단계 6: pyshp를 사용하여 shapefile에 씁니다.
     with tempfile.TemporaryDirectory() as tmpdir:
         shp_path = str(Path(tmpdir) / f"{base_filename}.shp")
         try:
