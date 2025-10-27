@@ -324,15 +324,119 @@ else:
 
 # --- 7. 요약 및 최종 다운로드 ---
 st.markdown("### 📋 상세 분석 보고서")
-summary_lines = []
-csv_data = []
-# ... (Summary logic will be filled in)
+
+with st.spinner("보고서 생성중..."):
+    # --- TXT 요약(표시용) 및 CSV(다운로드용) 데이터 생성 ---
+    summary_lines = []
+    csv_data = []
+
+    pixel_size = st.session_state.get('pixel_size', 1.0)
+    area_per_pixel = pixel_size * pixel_size
+
+    # --- 보고서 헤더의 총 면적 계산 ---
+    report_total_area_m2 = 0
+    if 'gdf' in st.session_state and not st.session_state.gdf.empty:
+        if 'area' not in st.session_state.gdf.columns:
+            st.session_state.gdf['area'] = st.session_state.gdf.geometry.area
+        report_total_area_m2 = st.session_state.gdf.area.sum()
+    else:
+        area_source_type = next((t for t in valid_selected_types if dem_results.get(t)), None)
+        if area_source_type:
+            results = dem_results[area_source_type]
+            stats = results.get('stats')
+            gdf = results.get('gdf')
+            if stats:
+                report_total_area_m2 = stats.get('area', 0) * area_per_pixel
+            elif gdf is not None and not gdf.empty:
+                if 'area' not in gdf.columns:
+                    gdf['area'] = gdf.geometry.area
+                report_total_area_m2 = gdf.area.sum()
+
+    # 일반 정보
+    summary_lines.append(f"분석 일시: {analysis_date}")
+    summary_lines.append(f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
+    csv_data.append({'분석 구분': '기본 정보', '항목': '분석 일시', '값': analysis_date, '단위': '', '면적(m²)': '', '비율(%)': ''})
+    csv_data.append({'분석 구분': '기본 정보', '항목': '분석 대상', '값': st.session_state.get('uploaded_file_name', 'N/A'), '단위': '', '면적(m²)': '', '비율(%)': ''})
+
+    summary_lines.append(f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})" if len(matched_sheets) <= 20 else f"사용된 도엽: {len(matched_sheets)}개")
+    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽', '값': f"{len(matched_sheets)}개 ({', '.join(matched_sheets)})" if len(matched_sheets) <= 20 else f"{len(matched_sheets)}개", '단위': '', '면적(m²)': '', '비율(%)': ''})
+
+    summary_lines.append(f"총 분석 면적: {int(report_total_area_m2):,} m²")
+    csv_data.append({'분석 구분': '기본 정보', '항목': '총 분석 면적', '값': '', '단위': 'm²', '면적(m²)': f"{int(report_total_area_m2):,}", '비율(%)': ''})
+    summary_lines.append("")
+
+    # 분석별 정보
+    for analysis_type in valid_selected_types:
+        stats = dem_results[analysis_type].get('stats')
+        binned_stats = dem_results[analysis_type].get('binned_stats')
+        gdf = dem_results[analysis_type].get('gdf')
+        title_info = analysis_map.get(analysis_type, {})
+        title = title_info.get('title', analysis_type)
+
+        summary_lines.append(f"--- {title} ---")
+        total_area_m2 = 0
+        if stats:
+            total_area_m2 = stats.get('area', 0) * area_per_pixel
+            unit = title_info.get('unit', '')
+            summary_lines.extend([f"- 최소값: {stats.get('min', 0):.2f} {unit}", f"- 최대값: {stats.get('max', 0):.2f} {unit}", f"- 평균값: {stats.get('mean', 0):.2f} {unit}"])
+            csv_data.extend([
+                {'분석 구분': title, '항목': '최소값', '값': f"{stats.get('min', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''},
+                {'분석 구분': title, '항목': '최대값', '값': f"{stats.get('max', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''},
+                {'분석 구분': title, '항목': '평균값', '값': f"{stats.get('mean', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''}
+            ])
+        elif gdf is not None and not gdf.empty:
+            if 'area' not in gdf.columns: gdf['area'] = gdf.geometry.area
+            total_area_m2 = gdf.area.sum()
+
+        if binned_stats:
+            summary_lines.append(f"\n[{title_info.get('binned_label', '구간별 통계')}]")
+            for row in binned_stats:
+                binned_area_m2 = row['area'] * area_per_pixel
+                percentage = (binned_area_m2 / total_area_m2 * 100) if total_area_m2 > 0 else 0
+                summary_lines.append(f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
+                csv_data.append({'분석 구분': title, '항목': row['bin_range'], '값': '', '단위': '', '면적(m²)': f"{int(binned_area_m2):,}", '비율(%)': f"{percentage:.1f}"})
+
+        if gdf is not None and not gdf.empty:
+            class_col = title_info.get('class_col')
+            if class_col and class_col in gdf.columns:
+                dissolved_gdf = gdf.dissolve(by=class_col, aggfunc={'area': 'sum'}) if 'area' in gdf.columns else gdf.dissolve(by=class_col)
+                if 'area' not in dissolved_gdf.columns: dissolved_gdf['area'] = dissolved_gdf.geometry.area
+                dissolved_gdf = dissolved_gdf.sort_values(by='area', ascending=False)
+                summary_lines.append(f"\n[{title_info.get('binned_label', '종류별 통계')}]")
+                for item, row in dissolved_gdf.iterrows():
+                    area = row['area']
+                    percentage = (area / total_area_m2 * 100) if total_area_m2 > 0 else 0
+                    summary_lines.append(f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
+                    csv_data.append({'분석 구분': title, '항목': item, '값': '', '단위': '', '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
+
+        summary_lines.append("")
+
+    # --- 표시 텍스트 및 CSV 문자열 생성 ---
+    summary_text = "\n".join(summary_lines)
+    report_df = pd.DataFrame(csv_data)
+    csv_buffer = io.StringIO()
+    report_df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+    csv_string = csv_buffer.getvalue()
+
+# 요약 텍스트 영역 표시
+st.text_area("", summary_text, height=400)
 
 # --- 최종 ZIP 생성 및 다운로드 버튼 ---
 with st.spinner("다운로드 파일 생성중..."):
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # ... (CSV, PNG, TIF writing logic will be filled in) ...
+        zip_file.writestr(f"analysis_summary_{timestamp}.csv", csv_string)
+        for analysis_type, fig in plot_figures.items():
+            img_buffer = io.BytesIO()
+            fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+            img_buffer.seek(0)
+            zip_file.writestr(f"{analysis_type}_analysis.png", img_buffer.getvalue())
+            plt.close(fig)
+        for analysis_type in valid_selected_types:
+            results = dem_results.get(analysis_type, {})
+            tif_path = results.get('tif_path')
+            if tif_path and Path(tif_path).exists():
+                zip_file.write(tif_path, arcname=f"{analysis_type}.tif")
         for analysis_type, data in shp_buffers.items():
             with zipfile.ZipFile(data["buffer"], 'r') as inner_zip:
                 for file_info in inner_zip.infolist():

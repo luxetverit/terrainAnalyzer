@@ -304,6 +304,8 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                 if not clipped_gdf.empty:
                     # CRS 정보가 누락될 수 있으므로 다시 설정
                     clipped_gdf.set_crs(analysis_crs, inplace=True)
+                    # ST_Intersection 결과로 생성될 수 있는 빈 지오메트리 제거
+                    clipped_gdf = clipped_gdf[~clipped_gdf.geometry.is_empty]
                     dem_results[analysis_type] = {'gdf': clipped_gdf}
                 else:
                     dem_results[analysis_type] = {'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
