@@ -93,8 +93,8 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 for file_path in Path(tmpdir).glob(f'{temp_basename}.*'):
-                    # .cpg 파일은 제외하고 나머지 파일만 압축에 포함
-                    if file_path.suffix.lower() != '.cpg':
+                    # .cpg와 .prj 파일은 제외하고 나머지 파일만 압축에 포함
+                    if file_path.suffix.lower() not in ['.cpg', '.prj']:
                         arcname = file_path.name.replace(temp_basename, base_filename)
                         zip_file.write(file_path, arcname=arcname)
             zip_buffer.seek(0)
