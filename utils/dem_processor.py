@@ -275,7 +275,6 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
             if not table_name:
                 continue
 
-            # 'soil'은 5174, 그 외는 5186을 사용하도록 분석별 CRS 결정
             if analysis_type == 'soil':
                 analysis_crs = 'EPSG:5174'
             else:
@@ -283,43 +282,34 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
 
             srid = analysis_crs.split(':')[1]
 
-            # 사용자 GDF를 현재 분석에 맞는 CRS로 변환
             user_gdf_reprojected = user_gdf_original.to_crs(analysis_crs)
             user_wkt = user_gdf_reprojected.union_all().wkt
 
-            # 쿼리는 이제 테이블과 지오메트리에 동일한 SRID를 사용
-            sql = f"SELECT * FROM {table_name} AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', {srid}));"
+            # geometry 컬럼 중복을 피하기 위해 필요한 컬럼만 명시적으로 선택합니다.
+            with engine.connect() as connection:
+                from sqlalchemy import text
+                table_name_only = table_name.split('.')[-1]
+                query = text("SELECT column_name FROM information_schema.columns WHERE table_name = :table_name AND column_name != 'geometry'")
+                result = connection.execute(query, {"table_name": table_name_only})
+                columns = [row[0] for row in result]
+                formatted_columns = ', '.join([f't1."{c}"' for c in columns])
+
+            # 최종 SQL 쿼리를 생성합니다.
+            sql = f"SELECT ST_Intersection(t1.geometry, ST_GeomFromText('{user_wkt}', {srid})) AS geometry, {formatted_columns} FROM {table_name} AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', {srid}));"
 
             try:
-                iterator = gpd.read_postgis(
-                    sql, engine, geom_col='geometry', chunksize=5000)
-                clipped_chunks = []
-                for chunk in iterator:
-                    if not chunk.empty:
-                        # 반환된 청크는 테이블과 동일한 CRS를 가져야 함
-                        # 이를 올바르게 설정하고 analysis_crs와 일치하는지 확인
-                        if chunk.crs is None:
-                            chunk.set_crs(analysis_crs, inplace=True)
-                        elif chunk.crs != analysis_crs:
-                            chunk = chunk.to_crs(analysis_crs)
+                # Python에서 클리핑을 수행하지 않으므로, DB 결과를 바로 사용합니다.
+                clipped_gdf = gpd.read_postgis(sql, engine, geom_col='geometry')
 
-                        # 데이터 클리핑
-                        clipped_chunk = clip_geodataframe(
-                            chunk, user_gdf_reprojected)
-                        if not clipped_chunk.empty:
-                            clipped_chunks.append(clipped_chunk)
-
-                if clipped_chunks:
-                    final_gdf = gpd.GeoDataFrame(pd.concat(
-                        clipped_chunks, ignore_index=True), crs=analysis_crs)
-                    dem_results[analysis_type] = {'gdf': final_gdf}
+                if not clipped_gdf.empty:
+                    # CRS 정보가 누락될 수 있으므로 다시 설정
+                    clipped_gdf.set_crs(analysis_crs, inplace=True)
+                    dem_results[analysis_type] = {'gdf': clipped_gdf}
                 else:
-                    dem_results[analysis_type] = {
-                        'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
+                    dem_results[analysis_type] = {'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
 
             except Exception as e:
                 print(f"Error processing {analysis_type}: {e}")
-                dem_results[analysis_type] = {
-                    'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
+                dem_results[analysis_type] = {'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
 
     return dem_results
