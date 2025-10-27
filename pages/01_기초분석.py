@@ -140,7 +140,7 @@ road_address = loc_info.get('road_address', '정보 없음')
 jibun_address = loc_info.get('address', '정보 없음')
 
 if '정보 없음' in road_address or '실패' in road_address or '오류' in road_address:
-    st.markdown(f"**주소**: {jibun_address}")
+    st.markdown(f"**주소**: 도로명 주소가 없습니다 (지번: {jibun_address})")
 else:
     st.markdown(f"**주소**: {road_address} (지번: {jibun_address})")
 
