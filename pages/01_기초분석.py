@@ -42,9 +42,6 @@ st.set_page_config(page_title="기초 분석 - 지형 분석 서비스",
 apply_styles()
 
 
-
-
-
 # --- 2. 세션 상태 확인 ---
 if 'temp_file_path' not in st.session_state:
     st.warning("업로드된 파일이 없습니다. 홈 페이지로 돌아가 파일을 업로드해주세요.")
@@ -139,7 +136,7 @@ st.markdown(
 road_address = loc_info.get('road_address', '정보 없음')
 jibun_address = loc_info.get('address', '정보 없음')
 
-if '정보 없음' in road_address or '실패' in road_address or '오류' in road_address:
+if '정보 없음' in road_address or '실패' in road_address or '오류' or '주소 정보를 찾을 수 없습니다.' in road_address in road_address:
     st.markdown(f"**주소**: 도로명 주소가 없습니다 (지번: {jibun_address})")
 else:
     st.markdown(f"**주소**: {road_address} (지번: {jibun_address})")
@@ -226,7 +223,7 @@ analysis_items = {
 # --- 선택 상태 초기화 ---
 if 'analysis_selections' not in st.session_state:
     st.session_state.analysis_selections = {
-        label: (analysis_items[label] == 'dem_group') 
+        label: (analysis_items[label] == 'dem_group')
         for label in analysis_items
     }
 
@@ -235,7 +232,8 @@ cols = st.columns(4)
 for i, label in enumerate(analysis_items.keys()):
     with cols[i % 4]:
         # 선택된 항목에는 primary, 선택되지 않은 항목에는 secondary 유형 사용
-        button_type = "primary" if st.session_state.analysis_selections.get(label) else "secondary"
+        button_type = "primary" if st.session_state.analysis_selections.get(
+            label) else "secondary"
         if st.button(
             label,
             key=f"btn_{label}",
@@ -267,13 +265,15 @@ with col2:
             if is_selected:
                 selected_key = analysis_items[label]
                 if selected_key == 'dem_group':
-                    final_analysis_types.extend(['elevation', 'slope', 'aspect'])
+                    final_analysis_types.extend(
+                        ['elevation', 'slope', 'aspect'])
                 else:
                     final_analysis_types.append(selected_key)
-        
+
         if final_analysis_types:
             # 중복 제거 및 세션 상태에 저장
-            st.session_state.selected_analysis_types = list(dict.fromkeys(final_analysis_types))
+            st.session_state.selected_analysis_types = list(
+                dict.fromkeys(final_analysis_types))
             st.switch_page("pages/03_처리중.py")
         else:
             st.warning("분석 항목을 하나 이상 선택해주세요.")
