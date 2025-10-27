@@ -86,10 +86,6 @@ def calc_stats(array):
 
 
 def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
-    # hsg 분석은 soil 데이터에 의존하므로, hsg가 선택되면 soil을 항상 포함
-    if 'hsg' in selected_types:
-        selected_types = set(selected_types)
-        selected_types.add('soil')
     import richdem as rd
 
     from utils.config import get_db_engine
@@ -268,19 +264,18 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
         item for item in selected_types if item in ['soil', 'hsg', 'landcover']]
 
     if vector_analysis_types:
-        # hsg는 이제 soil에서 파생되므로 analysis_configs에서 제거
         analysis_configs = {
             'soil': 'public.kr_soil_map',
-            # 'hsg': 'public.kr_hsg_map', # 더 이상 직접 조회하지 않음
+            'hsg': 'public.kr_hsg_map',
             'landcover': 'public.kr_landcover_map_l3'
         }
 
-        # hsg를 루프에서 제외 (soil 처리 후 별도 처리)
-        for analysis_type in [t for t in vector_analysis_types if t != 'hsg']:
+        for analysis_type in vector_analysis_types:
             table_name = analysis_configs.get(analysis_type)
             if not table_name:
                 continue
 
+            # 'soil'은 5174, 그 외는 5186을 사용하도록 분석별 CRS 결정
             if analysis_type == 'soil':
                 analysis_crs = 'EPSG:5174'
             else:
@@ -288,17 +283,12 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
 
             srid = analysis_crs.split(':')[1]
 
+            # 사용자 GDF를 현재 분석에 맞는 CRS로 변환
             user_gdf_reprojected = user_gdf_original.to_crs(analysis_crs)
             user_wkt = user_gdf_reprojected.union_all().wkt
 
-            if analysis_type == 'soil':
-                # soil 분석 시 hsg_lookup 테이블을 조인하여 hg 컬럼을 가져옴
-                sql = f"""SELECT t1.*, t2.hg 
-                         FROM public.kr_soil_map AS t1 
-                         LEFT JOIN hsg_lookup AS t2 ON t1.soilsy = t2.soilsy 
-                         WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', {srid}));"""
-            else:
-                sql = f"SELECT * FROM {table_name} AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', {srid}));"
+            # 쿼리는 이제 테이블과 지오메트리에 동일한 SRID를 사용
+            sql = f"SELECT * FROM {table_name} AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', {srid}));"
 
             try:
                 iterator = gpd.read_postgis(
@@ -306,11 +296,14 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                 clipped_chunks = []
                 for chunk in iterator:
                     if not chunk.empty:
+                        # 반환된 청크는 테이블과 동일한 CRS를 가져야 함
+                        # 이를 올바르게 설정하고 analysis_crs와 일치하는지 확인
                         if chunk.crs is None:
                             chunk.set_crs(analysis_crs, inplace=True)
                         elif chunk.crs != analysis_crs:
                             chunk = chunk.to_crs(analysis_crs)
 
+                        # 데이터 클리핑
                         clipped_chunk = clip_geodataframe(
                             chunk, user_gdf_reprojected)
                         if not clipped_chunk.empty:
@@ -328,16 +321,5 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                 print(f"Error processing {analysis_type}: {e}")
                 dem_results[analysis_type] = {
                     'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
-
-        # soil 분석 결과를 기반으로 hsg 결과 생성
-        if 'soil' in dem_results and 'hsg' in selected_types:
-            print("Creating HSG results from soil data...")
-            # soil의 GDF 복사
-            hsg_gdf = dem_results['soil']['gdf'].copy()
-            
-            # hsg 결과는 다른 분석과 일관성을 위해 EPSG:5186으로 변환
-            hsg_gdf = hsg_gdf.to_crs('EPSG:5186')
-            
-            dem_results['hsg'] = {'gdf': hsg_gdf}
 
     return dem_results

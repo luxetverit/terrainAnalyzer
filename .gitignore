@@ -30,6 +30,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.zip
+/utils/soil
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -202,4 +204,3 @@ cython_debug/
 
 # Sensitive configuration files
 utils/config.py
-assets/map_index_preview.png
