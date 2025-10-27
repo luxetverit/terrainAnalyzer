@@ -259,45 +259,67 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
             if path and os.path.exists(path):
                 os.remove(path)
 
-    if any(item in selected_types for item in ['soil', 'hsg', 'landcover']):
-        user_geom = user_gdf_reprojected.union_all()
-        user_wkt = user_geom.wkt
+    # --- 벡터 분석 (토양, HSG, 토지피복) ---
+    vector_analysis_types = [
+        item for item in selected_types if item in ['soil', 'hsg', 'landcover']]
 
+    if vector_analysis_types:
         analysis_configs = {
             'soil': 'public.kr_soil_map',
             'hsg': 'public.kr_hsg_map',
             'landcover': 'public.kr_landcover_map_l3'
         }
 
-        for analysis_type, table_name in analysis_configs.items():
-            if analysis_type in selected_types:
-                sql = f"SELECT * FROM {table_name} AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', 5186));"
-                
-                try:
-                    iterator = gpd.read_postgis(sql, engine, geom_col='geometry', chunksize=5000)
-                    clipped_chunks = []
-                    for chunk in iterator:
-                        if not chunk.empty:
-                            # Ensure chunk has the correct CRS before clipping
-                            if chunk.crs is None:
-                                chunk.set_crs(user_gdf_reprojected.crs, inplace=True)
-                            elif chunk.crs != user_gdf_reprojected.crs:
-                                chunk = chunk.to_crs(user_gdf_reprojected.crs)
-                            
-                            clipped_chunk = clip_geodataframe(chunk, user_gdf_reprojected)
-                            if not clipped_chunk.empty:
-                                clipped_chunks.append(clipped_chunk)
-                    
-                    if clipped_chunks:
-                        # Concatenate all clipped chunks into a single GeoDataFrame
-                        final_gdf = gpd.GeoDataFrame(pd.concat(clipped_chunks, ignore_index=True), crs=user_gdf_reprojected.crs)
-                        dem_results[analysis_type] = {'gdf': final_gdf}
-                    else:
-                        dem_results[analysis_type] = {'gdf': gpd.GeoDataFrame(crs=user_gdf_reprojected.crs)}
+        for analysis_type in vector_analysis_types:
+            table_name = analysis_configs.get(analysis_type)
+            if not table_name:
+                continue
 
-                except Exception as e:
-                    # In case of an error (e.g., table not found), store an empty GeoDataFrame
-                    print(f"Error processing {analysis_type}: {e}")
-                    dem_results[analysis_type] = {'gdf': gpd.GeoDataFrame(crs=user_gdf_reprojected.crs)}
+            # 'soil'은 5174, 그 외는 5186을 사용하도록 분석별 CRS 결정
+            if analysis_type == 'soil':
+                analysis_crs = 'EPSG:5174'
+            else:
+                analysis_crs = 'EPSG:5186'
+
+            srid = analysis_crs.split(':')[1]
+
+            # 사용자 GDF를 현재 분석에 맞는 CRS로 변환
+            user_gdf_reprojected = user_gdf_original.to_crs(analysis_crs)
+            user_wkt = user_gdf_reprojected.union_all().wkt
+
+            # 쿼리는 이제 테이블과 지오메트리에 동일한 SRID를 사용
+            sql = f"SELECT * FROM {table_name} AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', {srid}));"
+
+            try:
+                iterator = gpd.read_postgis(
+                    sql, engine, geom_col='geometry', chunksize=5000)
+                clipped_chunks = []
+                for chunk in iterator:
+                    if not chunk.empty:
+                        # 반환된 청크는 테이블과 동일한 CRS를 가져야 함
+                        # 이를 올바르게 설정하고 analysis_crs와 일치하는지 확인
+                        if chunk.crs is None:
+                            chunk.set_crs(analysis_crs, inplace=True)
+                        elif chunk.crs != analysis_crs:
+                            chunk = chunk.to_crs(analysis_crs)
+
+                        # 데이터 클리핑
+                        clipped_chunk = clip_geodataframe(
+                            chunk, user_gdf_reprojected)
+                        if not clipped_chunk.empty:
+                            clipped_chunks.append(clipped_chunk)
+
+                if clipped_chunks:
+                    final_gdf = gpd.GeoDataFrame(pd.concat(
+                        clipped_chunks, ignore_index=True), crs=analysis_crs)
+                    dem_results[analysis_type] = {'gdf': final_gdf}
+                else:
+                    dem_results[analysis_type] = {
+                        'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
+
+            except Exception as e:
+                print(f"Error processing {analysis_type}: {e}")
+                dem_results[analysis_type] = {
+                    'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
 
     return dem_results

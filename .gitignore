@@ -56,6 +56,7 @@ coverage.xml
 .pytest_cache/
 cover/
 *.png
+*.xlsx
 
 # Translations
 *.mo
@@ -201,3 +202,4 @@ cython_debug/
 
 # Sensitive configuration files
 utils/config.py
+assets/map_index_preview.png
