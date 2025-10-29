@@ -255,6 +255,10 @@ else:
                     plot_figures[analysis_type] = fig
 
             elif gdf is not None and not gdf.empty: # VECTOR DATA PLOTTING
+                # 일관된 시각화를 위해 모든 벡터 데이터를 EPSG:5186으로 변환
+                if gdf.crs and gdf.crs.to_string().upper() != "EPSG:5186":
+                    gdf = gdf.to_crs("EPSG:5186")
+
                 title = analysis_map.get(analysis_type, {}).get('title', analysis_type)
                 with st.spinner(f"'{title}' 분석도 생성 중..."):
                     fig, ax = create_padded_fig_ax(figsize=(10, 10))
@@ -374,9 +378,7 @@ with st.spinner("보고서 생성중..."):
         title = title_info.get('title', analysis_type)
 
         summary_lines.append(f"--- {title} ---")
-        total_area_m2 = 0
         if stats:
-            total_area_m2 = stats.get('area', 0) * area_per_pixel
             unit = title_info.get('unit', '')
             summary_lines.extend([f"- 최소값: {stats.get('min', 0):.2f} {unit}", f"- 최대값: {stats.get('max', 0):.2f} {unit}", f"- 평균값: {stats.get('mean', 0):.2f} {unit}"])
             csv_data.extend([
@@ -386,26 +388,26 @@ with st.spinner("보고서 생성중..."):
             ])
         elif gdf is not None and not gdf.empty:
             if 'area' not in gdf.columns: gdf['area'] = gdf.geometry.area
-            total_area_m2 = gdf.area.sum()
 
         if binned_stats:
             summary_lines.append(f"\n[{title_info.get('binned_label', '구간별 통계')}]")
             for row in binned_stats:
                 binned_area_m2 = row['area'] * area_per_pixel
-                percentage = (binned_area_m2 / total_area_m2 * 100) if total_area_m2 > 0 else 0
+                percentage = (binned_area_m2 / report_total_area_m2 * 100) if report_total_area_m2 > 0 else 0
                 summary_lines.append(f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
                 csv_data.append({'분석 구분': title, '항목': row['bin_range'], '값': '', '단위': '', '면적(m²)': f"{int(binned_area_m2):,}", '비율(%)': f"{percentage:.1f}"})
 
         if gdf is not None and not gdf.empty:
             class_col = title_info.get('class_col')
             if class_col and class_col in gdf.columns:
-                dissolved_gdf = gdf.dissolve(by=class_col, aggfunc={'area': 'sum'}) if 'area' in gdf.columns else gdf.dissolve(by=class_col)
-                if 'area' not in dissolved_gdf.columns: dissolved_gdf['area'] = dissolved_gdf.geometry.area
+                # 먼저 등급별로 도형을 합친 후, 합쳐진 도형의 면적을 새로 계산하여 정확성을 보장합니다.
+                dissolved_gdf = gdf.dissolve(by=class_col)
+                dissolved_gdf['area'] = dissolved_gdf.geometry.area
                 dissolved_gdf = dissolved_gdf.sort_values(by='area', ascending=False)
                 summary_lines.append(f"\n[{title_info.get('binned_label', '종류별 통계')}]")
                 for item, row in dissolved_gdf.iterrows():
                     area = row['area']
-                    percentage = (area / total_area_m2 * 100) if total_area_m2 > 0 else 0
+                    percentage = (area / report_total_area_m2 * 100) if report_total_area_m2 > 0 else 0
                     summary_lines.append(f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
                     csv_data.append({'분석 구분': title, '항목': item, '값': '', '단위': '', '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
 
