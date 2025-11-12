@@ -27,6 +27,7 @@ from utils.plot_helpers import (add_north_arrow, add_scalebar_vector,
                                 draw_accurate_scalebar)
 from utils.theme_util import apply_styles
 
+
 # --- 최종 해결책: 모든 오류 수정을 집대성한 '완전판' Shapefile 생성 함수 ---
 def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesIO | None:
     """
@@ -36,7 +37,7 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
         return None
 
     gdf = gdf.copy()
-    
+
     # 1. 분석 유형에 따른 핵심 컬럼만 선택
     analysis_type = base_filename.split('_')[0]
     essential_cols = {
@@ -52,22 +53,25 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
         gdf = gdf[cols_to_keep]
 
     # 2. 데이터 및 지오메트리 정제
-    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty & gdf.geometry.is_valid]
-    if gdf.empty: return None
+    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty &
+              gdf.geometry.is_valid]
+    if gdf.empty:
+        return None
 
     # 3. 도형 분할 및 단순화 (오류 방지)
     gdf = gdf.explode(index_parts=True)
     try:
         gdf['geometry'] = gdf.simplify(tolerance=1.0, preserve_topology=True)
     except Exception:
-        pass # 단순화 실패 시에도 계속 진행
+        pass  # 단순화 실패 시에도 계속 진행
 
     # 4. 가장 강력한 컬럼 이름 정리 (10자 제한, 소문자, 중복 제거)
     new_columns_map = {}
     processed_names = []
     for col in gdf.columns:
-        if col.lower() == 'geometry': continue
-        
+        if col.lower() == 'geometry':
+            continue
+
         safe_name = col.lower()[:10]
         final_name = safe_name
         count = 1
@@ -76,17 +80,17 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
             base_name = safe_name[:10-len(suffix)]
             final_name = f"{base_name}{suffix}"
             count += 1
-        
+
         processed_names.append(final_name)
         new_columns_map[col] = final_name
-    
+
     gdf = gdf.rename(columns=new_columns_map)
 
     # 5. GeoPandas.to_file을 안전한 임시 파일 이름으로 사용
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_basename = "output"
         shp_path = str(Path(tmpdir) / f"{temp_basename}.shp")
-        
+
         try:
             gdf.to_file(shp_path, driver='ESRI Shapefile', encoding='cp949')
 
@@ -95,7 +99,8 @@ def create_shapefile_zip(gdf: gpd.GeoDataFrame, base_filename: str) -> io.BytesI
                 for file_path in Path(tmpdir).glob(f'{temp_basename}.*'):
                     # .cpg와 .prj 파일은 제외하고 나머지 파일만 압축에 포함
                     if file_path.suffix.lower() not in ['.cpg', '.prj']:
-                        arcname = file_path.name.replace(temp_basename, base_filename)
+                        arcname = file_path.name.replace(
+                            temp_basename, base_filename)
                         zip_file.write(file_path, arcname=arcname)
             zip_buffer.seek(0)
             return zip_buffer
@@ -152,8 +157,10 @@ with cols[1]:
                 results = st.session_state.dem_results.get(analysis_type, {})
                 tif_path = results.get('tif_path')
                 if tif_path and Path(tif_path).exists():
-                    try: Path(tif_path).unlink()
-                    except OSError: pass
+                    try:
+                        Path(tif_path).unlink()
+                    except OSError:
+                        pass
         for key in list(st.session_state.keys()):
             if key != 'upload_counter':
                 del st.session_state[key]
@@ -174,9 +181,52 @@ valid_selected_types = [t for t in selected_types if t in dem_results]
 if not valid_selected_types:
     st.info("표시할 2D 분석 결과가 없습니다.")
 else:
+    st.markdown("### 🗺️ 지도 요소 위치 설정")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.session_state['legend_position'] = st.selectbox(
+            "범례 위치",
+            ("왼쪽 아래", "오른쪽 아래", "왼쪽 위", "오른쪽 위"),
+            index=0,
+            key="legend_pos_selector"
+        )
+    with col2:
+        st.session_state['north_arrow_position'] = st.selectbox(
+            "방위표 위치",
+            ("오른쪽 위", "왼쪽 위", "왼쪽 아래", "오른쪽 아래"),
+            index=0,
+            key="north_arrow_pos_selector"
+        )
+    with col3:
+        st.session_state['scale_bar_position'] = st.selectbox(
+            "축척 위치",
+            ("왼쪽 아래", "오른쪽 아래", "왼쪽 위", "오른쪽 위"),
+            index=0,
+            key="scale_bar_pos_selector"
+        )
+
+    legend_position_mapping = {
+        "왼쪽 아래": {"loc": "lower left", "bbox_to_anchor": (0.1, 0.1)},
+        "오른쪽 아래": {"loc": "lower right", "bbox_to_anchor": (0.9, 0.1)},
+        "왼쪽 위": {"loc": "upper left", "bbox_to_anchor": (0.1, 0.9)},
+        "오른쪽 위": {"loc": "upper right", "bbox_to_anchor": (0.9, 0.9)},
+    }
+    north_arrow_position_mapping = {
+        "왼쪽 위": {"x": 0.05, "y": 0.95},
+        "오른쪽 위": {"x": 0.95, "y": 0.95},
+        "왼쪽 아래": {"x": 0.05, "y": 0.05},
+        "오른쪽 아래": {"x": 0.95, "y": 0.05},
+    }
+    legend_pos = legend_position_mapping.get(
+        st.session_state.get('legend_position', '왼쪽 아래'))
+    north_arrow_pos = north_arrow_position_mapping.get(
+        st.session_state.get('north_arrow_position', '왼쪽 위'))
+    scale_bar_pos = st.session_state.get('scale_bar_position', '왼쪽 아래')
+
     for analysis_type in valid_selected_types:
         with st.container(border=True):
-            st.markdown(f"### 📈 {analysis_map.get(analysis_type, {}).get('title', analysis_type)}")
+            st.markdown(
+                f"### 📈 {analysis_map.get(analysis_type, {}).get('title', analysis_type)}")
             results = dem_results[analysis_type]
             stats = results.get('stats')
             grid = results.get('grid')
@@ -188,31 +238,38 @@ else:
                 PIXEL_THRESHOLD = 5_000_000
                 if grid.size > PIXEL_THRESHOLD:
                     downsample_factor = (PIXEL_THRESHOLD / grid.size) ** 0.5
-                    st.info(f"ℹ️ 시각화 해상도를 원본의 {downsample_factor:.1%}로 자동 조정합니다.")
+                    st.info(
+                        f"ℹ️ 시각화 해상도를 원본의 {downsample_factor:.1%}로 자동 조정합니다.")
                     grid = zoom(grid, downsample_factor, order=1)
                     effective_pixel_size = effective_pixel_size / downsample_factor
 
-            if stats: # RASTER DATA PLOTTING
+            if stats:  # RASTER DATA PLOTTING
                 st.markdown("#### 요약 통계")
                 cols = st.columns(3)
-                cols[0].metric("최소값", f"{stats.get('min', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
-                cols[1].metric("최대값", f"{stats.get('max', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
-                cols[2].metric("평균값", f"{stats.get('mean', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
+                cols[0].metric(
+                    "최소값", f"{stats.get('min', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
+                cols[1].metric(
+                    "최대값", f"{stats.get('max', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
+                cols[2].metric(
+                    "평균값", f"{stats.get('mean', 0):.2f} {analysis_map.get(analysis_type, {}).get('unit', '')}")
 
-                title = analysis_map.get(analysis_type, {}).get('title', analysis_type)
+                title = analysis_map.get(analysis_type, {}).get(
+                    'title', analysis_type)
                 with st.spinner(f"'{title}' 분석도 생성 중..."):
-                    bins, labels, palette_name = results.get('bins'), results.get('labels'), results.get('palette_name')
+                    bins, labels, palette_name = results.get('bins'), results.get(
+                        'labels'), results.get('palette_name')
                     if not all([bins, labels, palette_name]):
                         st.warning(f"'{title}'에 대한 시각화 정보를 생성할 수 없습니다.")
                         continue
-                    
+
                     palette_data = get_palette(palette_name)
                     if not palette_data:
                         st.warning(f"'{palette_name}' 팔레트를 DB에서 찾을 수 없습니다.")
                         continue
 
                     if analysis_type == 'aspect':
-                        flat_item = next((item for item in palette_data if item['bin_label'].strip().lower() == 'flat'), None)
+                        flat_item = next(
+                            (item for item in palette_data if item['bin_label'].strip().lower() == 'flat'), None)
                         if flat_item:
                             palette_data.remove(flat_item)
                             palette_data.insert(0, flat_item)
@@ -224,7 +281,8 @@ else:
                     fig, ax = create_padded_fig_ax(figsize=(10, 8))
                     ax.set_title(title, fontsize=16, pad=20)
 
-                    use_hillshade = st.toggle("음영기복도 중첩", value=True, key=f"hillshade_{analysis_type}") if analysis_type == 'elevation' else False
+                    use_hillshade = st.toggle(
+                        "음영기복도 중첩", value=True, key=f"hillshade_{analysis_type}") if analysis_type == 'elevation' else False
                     if use_hillshade:
                         hillshade = create_hillshade(grid)
                         rgba_data = cmap(norm(grid))
@@ -236,30 +294,39 @@ else:
                         rgba_data[~valid_mask, 3] = 0
                         ax.imshow(np.clip(rgba_data, 0, 1), origin='upper')
                     else:
-                        ax.imshow(np.ma.masked_invalid(grid), cmap=cmap, norm=norm)
+                        ax.imshow(np.ma.masked_invalid(
+                            grid), cmap=cmap, norm=norm)
 
-                    patches = [mpatches.Patch(color=color, label=label) for color, label in zip(colors, labels)]
+                    patches = [mpatches.Patch(color=color, label=label)
+                               for color, label in zip(colors, labels)]
                     legend = ax.legend(handles=patches, title=analysis_map.get(analysis_type, {}).get('legend_title', '범례'),
-                                       bbox_to_anchor=(0.1, 0.1), loc='lower left', bbox_transform=fig.transFigure,
+                                       bbox_to_anchor=legend_pos['bbox_to_anchor'], loc=legend_pos[
+                                           'loc'], bbox_transform=fig.transFigure,
                                        fontsize='small', frameon=True, framealpha=1, edgecolor='black')
                     legend.get_title().set_fontweight('bold')
                     for patch in legend.get_patches():
-                        patch.set_edgecolor('black'); patch.set_linewidth(0.7)
+                        patch.set_edgecolor('black')
+                        patch.set_linewidth(0.7)
 
-                    adjust_ax_limits(ax); add_north_arrow(ax)
-                    scale_params = calculate_accurate_scalebar_params(effective_pixel_size, grid.shape, 50, fig, ax)
-                    draw_accurate_scalebar(fig, ax, effective_pixel_size, scale_params, grid.shape)
+                    adjust_ax_limits(ax)
+                    add_north_arrow(
+                        ax, x=north_arrow_pos['x'], y=north_arrow_pos['y'])
+                    scale_params = calculate_accurate_scalebar_params(
+                        effective_pixel_size, grid.shape, 50, fig, ax)
+                    draw_accurate_scalebar(
+                        fig, ax, effective_pixel_size, scale_params, grid.shape, position=scale_bar_pos)
                     ax.axis('off')
 
                     st.pyplot(fig)
                     plot_figures[analysis_type] = fig
 
-            elif gdf is not None and not gdf.empty: # VECTOR DATA PLOTTING
+            elif gdf is not None and not gdf.empty:  # VECTOR DATA PLOTTING
                 # 일관된 시각화를 위해 모든 벡터 데이터를 EPSG:5186으로 변환
                 if gdf.crs and gdf.crs.to_string().upper() != "EPSG:5186":
                     gdf = gdf.to_crs("EPSG:5186")
 
-                title = analysis_map.get(analysis_type, {}).get('title', analysis_type)
+                title = analysis_map.get(analysis_type, {}).get(
+                    'title', analysis_type)
                 with st.spinner(f"'{title}' 분석도 생성 중..."):
                     fig, ax = create_padded_fig_ax(figsize=(10, 10))
                     type_info = analysis_map.get(analysis_type, {})
@@ -269,46 +336,66 @@ else:
                         color_map = get_landcover_colormap()
                         if color_map and 'l2_code' in gdf.columns and 'l2_name' in gdf.columns:
                             gdf['plot_color'] = gdf['l2_code'].map(color_map)
-                            gdf.plot(ax=ax, color=gdf['plot_color'].fillna('#FFFFFF'), linewidth=0.5, edgecolor='k')
-                            unique_cats = gdf[['l2_code', 'l2_name']].drop_duplicates().sort_values(by='l2_code')
-                            patches = [mpatches.Patch(color=color_map.get(code, '#FFFFFF'), label=f'{name}') for _, (code, name) in unique_cats.iterrows()]
+                            gdf.plot(ax=ax, color=gdf['plot_color'].fillna(
+                                '#FFFFFF'), linewidth=0.5, edgecolor='k')
+                            unique_cats = gdf[['l2_code', 'l2_name']].drop_duplicates(
+                            ).sort_values(by='l2_code')
+                            patches = [mpatches.Patch(color=color_map.get(
+                                code, '#FFFFFF'), label=f'{name}') for _, (code, name) in unique_cats.iterrows()]
                             if patches:
                                 n_cols = (len(patches) + 19) // 20
                                 legend = ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
-                                                   bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small', ncol=n_cols)
+                                                   bbox_to_anchor=legend_pos['bbox_to_anchor'], loc=legend_pos['loc'],
+                                                   bbox_transform=fig.transFigure, fontsize='small', ncol=n_cols)
                                 for patch in legend.get_patches():
-                                    patch.set_edgecolor('black'); patch.set_linewidth(0.7)
+                                    patch.set_edgecolor('black')
+                                    patch.set_linewidth(0.7)
                         else:
                             gdf.plot(column=class_col, ax=ax, legend=True, categorical=True,
-                                     legend_kwds={'title': type_info.get('legend_title', '분류'), 'bbox_to_anchor': (1.05, 1), 'loc': 'upper left'})
+                                     legend_kwds={'title': type_info.get('legend_title', '분류'), 
+                                                  'bbox_to_anchor': legend_pos['bbox_to_anchor'], 'loc': legend_pos['loc'],
+                                                  'bbox_transform': fig.transFigure})
                     else:
                         if class_col and class_col in gdf.columns:
                             gdf_plot = gdf[gdf[class_col].notna()].copy()
                             unique_cats = sorted(gdf_plot[class_col].unique())
                             num_cats = len(unique_cats)
-                            cmap = plt.cm.get_cmap('tab20' if num_cats <= 20 else 'viridis', num_cats)
-                            colors = cmap.colors if num_cats <= 20 else cmap(np.linspace(0, 1, num_cats))
-                            color_map = {cat: color for cat, color in zip(unique_cats, colors)}
-                            gdf_plot['plot_color'] = gdf_plot[class_col].map(color_map)
-                            gdf_plot.plot(ax=ax, color=gdf_plot['plot_color'], linewidth=0.5, edgecolor='k')
-                            patches = [mpatches.Patch(color=color, label=cat) for cat, color in color_map.items()]
+                            cmap_base = plt.colormaps.get_cmap(
+                                'tab20' if num_cats <= 20 else 'viridis')
+                            colors = cmap_base.colors if num_cats <= 20 else cmap_base(
+                                np.linspace(0, 1, num_cats))
+                            color_map = {cat: color for cat,
+                                         color in zip(unique_cats, colors)}
+                            gdf_plot['plot_color'] = gdf_plot[class_col].map(
+                                color_map)
+                            gdf_plot.plot(
+                                ax=ax, color=gdf_plot['plot_color'], linewidth=0.5, edgecolor='k')
+                            patches = [mpatches.Patch(
+                                color=color, label=cat) for cat, color in color_map.items()]
                             if patches:
                                 n_cols = (len(patches) + 19) // 20
                                 legend = ax.legend(handles=patches, title=type_info.get('legend_title', '분류'),
-                                                   bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small', ncol=n_cols)
+                                                   bbox_to_anchor=legend_pos['bbox_to_anchor'], loc=legend_pos['loc'],
+                                                   bbox_transform=fig.transFigure, fontsize='small', ncol=n_cols)
                                 for patch in legend.get_patches():
-                                    patch.set_edgecolor('black'); patch.set_linewidth(0.7)
+                                    patch.set_edgecolor('black')
+                                    patch.set_linewidth(0.7)
                         else:
                             gdf.plot(ax=ax)
 
-                    adjust_ax_limits(ax); add_north_arrow(ax)
+                    adjust_ax_limits(ax)
+                    add_north_arrow(
+                        ax, x=north_arrow_pos['x'], y=north_arrow_pos['y'])
                     x_min, x_max = ax.get_xlim()
                     map_width_m = x_max - x_min
                     proxy_img_width_px = int(10 * 150)
-                    effective_pixel_size = map_width_m / proxy_img_width_px if proxy_img_width_px > 0 else 1.0
+                    effective_pixel_size = map_width_m / \
+                        proxy_img_width_px if proxy_img_width_px > 0 else 1.0
                     proxy_img_shape = (int(10 * 150), proxy_img_width_px)
-                    scale_params = calculate_accurate_scalebar_params(effective_pixel_size, proxy_img_shape, 50, fig, ax)
-                    draw_accurate_scalebar(fig, ax, effective_pixel_size, scale_params, proxy_img_shape)
+                    scale_params = calculate_accurate_scalebar_params(
+                        effective_pixel_size, proxy_img_shape, 50, fig, ax)
+                    draw_accurate_scalebar(
+                        fig, ax, effective_pixel_size, scale_params, proxy_img_shape, position=scale_bar_pos)
                     ax.axis('off')
 
                     st.pyplot(fig)
@@ -344,7 +431,8 @@ with st.spinner("보고서 생성중..."):
             st.session_state.gdf['area'] = st.session_state.gdf.geometry.area
         report_total_area_m2 = st.session_state.gdf.area.sum()
     else:
-        area_source_type = next((t for t in valid_selected_types if dem_results.get(t)), None)
+        area_source_type = next(
+            (t for t in valid_selected_types if dem_results.get(t)), None)
         if area_source_type:
             results = dem_results[area_source_type]
             stats = results.get('stats')
@@ -358,15 +446,21 @@ with st.spinner("보고서 생성중..."):
 
     # 일반 정보
     summary_lines.append(f"분석 일시: {analysis_date}")
-    summary_lines.append(f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
-    csv_data.append({'분석 구분': '기본 정보', '항목': '분석 일시', '값': analysis_date, '단위': '', '면적(m²)': '', '비율(%)': ''})
-    csv_data.append({'분석 구분': '기본 정보', '항목': '분석 대상', '값': st.session_state.get('uploaded_file_name', 'N/A'), '단위': '', '면적(m²)': '', '비율(%)': ''})
+    summary_lines.append(
+        f"분석 대상: {st.session_state.get('uploaded_file_name', 'N/A')}")
+    csv_data.append({'분석 구분': '기본 정보', '항목': '분석 일시',
+                    '값': analysis_date, '단위': '', '면적(m²)': '', '비율(%)': ''})
+    csv_data.append({'분석 구분': '기본 정보', '항목': '분석 대상', '값': st.session_state.get(
+        'uploaded_file_name', 'N/A'), '단위': '', '면적(m²)': '', '비율(%)': ''})
 
-    summary_lines.append(f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})" if len(matched_sheets) <= 20 else f"사용된 도엽: {len(matched_sheets)}개")
-    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽', '값': f"{len(matched_sheets)}개 ({', '.join(matched_sheets)})" if len(matched_sheets) <= 20 else f"{len(matched_sheets)}개", '단위': '', '면적(m²)': '', '비율(%)': ''})
+    summary_lines.append(f"사용된 도엽: {len(matched_sheets)}개 ({', '.join(matched_sheets)})" if len(
+        matched_sheets) <= 20 else f"사용된 도엽: {len(matched_sheets)}개")
+    csv_data.append({'분석 구분': '기본 정보', '항목': '사용된 도엽', '값': f"{len(matched_sheets)}개 ({', '.join(matched_sheets)})" if len(
+        matched_sheets) <= 20 else f"{len(matched_sheets)}개", '단위': '', '면적(m²)': '', '비율(%)': ''})
 
     summary_lines.append(f"총 분석 면적: {int(report_total_area_m2):,} m²")
-    csv_data.append({'분석 구분': '기본 정보', '항목': '총 분석 면적', '값': '', '단위': 'm²', '면적(m²)': f"{int(report_total_area_m2):,}", '비율(%)': ''})
+    csv_data.append({'분석 구분': '기본 정보', '항목': '총 분석 면적', '값': '', '단위': 'm²',
+                    '면적(m²)': f"{int(report_total_area_m2):,}", '비율(%)': ''})
     summary_lines.append("")
 
     # 분석별 정보
@@ -380,22 +474,31 @@ with st.spinner("보고서 생성중..."):
         summary_lines.append(f"--- {title} ---")
         if stats:
             unit = title_info.get('unit', '')
-            summary_lines.extend([f"- 최소값: {stats.get('min', 0):.2f} {unit}", f"- 최대값: {stats.get('max', 0):.2f} {unit}", f"- 평균값: {stats.get('mean', 0):.2f} {unit}"])
+            summary_lines.extend([f"- 최소값: {stats.get('min', 0):.2f} {unit}",
+                                 f"- 최대값: {stats.get('max', 0):.2f} {unit}", f"- 평균값: {stats.get('mean', 0):.2f} {unit}"])
             csv_data.extend([
-                {'분석 구분': title, '항목': '최소값', '값': f"{stats.get('min', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''},
-                {'분석 구분': title, '항목': '최대값', '값': f"{stats.get('max', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''},
-                {'분석 구분': title, '항목': '평균값', '값': f"{stats.get('mean', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''}
+                {'분석 구분': title, '항목': '최소값',
+                    '값': f"{stats.get('min', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''},
+                {'분석 구분': title, '항목': '최대값',
+                    '값': f"{stats.get('max', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''},
+                {'분석 구분': title, '항목': '평균값',
+                    '값': f"{stats.get('mean', 0):.2f}", '단위': unit, '면적(m²)': '', '비율(%)': ''}
             ])
         elif gdf is not None and not gdf.empty:
-            if 'area' not in gdf.columns: gdf['area'] = gdf.geometry.area
+            if 'area' not in gdf.columns:
+                gdf['area'] = gdf.geometry.area
 
         if binned_stats:
-            summary_lines.append(f"\n[{title_info.get('binned_label', '구간별 통계')}]")
+            summary_lines.append(
+                f"\n[{title_info.get('binned_label', '구간별 통계')}]")
             for row in binned_stats:
                 binned_area_m2 = row['area'] * area_per_pixel
-                percentage = (binned_area_m2 / report_total_area_m2 * 100) if report_total_area_m2 > 0 else 0
-                summary_lines.append(f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
-                csv_data.append({'분석 구분': title, '항목': row['bin_range'], '값': '', '단위': '', '면적(m²)': f"{int(binned_area_m2):,}", '비율(%)': f"{percentage:.1f}"})
+                percentage = (binned_area_m2 / report_total_area_m2 *
+                              100) if report_total_area_m2 > 0 else 0
+                summary_lines.append(
+                    f"- {row['bin_range']}: {int(binned_area_m2):,} m² ({percentage:.1f} %)")
+                csv_data.append({'분석 구분': title, '항목': row['bin_range'], '값': '', '단위': '',
+                                '면적(m²)': f"{int(binned_area_m2):,}", '비율(%)': f"{percentage:.1f}"})
 
         if gdf is not None and not gdf.empty:
             class_col = title_info.get('class_col')
@@ -403,13 +506,18 @@ with st.spinner("보고서 생성중..."):
                 # 먼저 등급별로 도형을 합친 후, 합쳐진 도형의 면적을 새로 계산하여 정확성을 보장합니다.
                 dissolved_gdf = gdf.dissolve(by=class_col)
                 dissolved_gdf['area'] = dissolved_gdf.geometry.area
-                dissolved_gdf = dissolved_gdf.sort_values(by='area', ascending=False)
-                summary_lines.append(f"\n[{title_info.get('binned_label', '종류별 통계')}]")
+                dissolved_gdf = dissolved_gdf.sort_values(
+                    by='area', ascending=False)
+                summary_lines.append(
+                    f"\n[{title_info.get('binned_label', '종류별 통계')}]")
                 for item, row in dissolved_gdf.iterrows():
                     area = row['area']
-                    percentage = (area / report_total_area_m2 * 100) if report_total_area_m2 > 0 else 0
-                    summary_lines.append(f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
-                    csv_data.append({'분석 구분': title, '항목': item, '값': '', '단위': '', '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
+                    percentage = (area / report_total_area_m2 *
+                                  100) if report_total_area_m2 > 0 else 0
+                    summary_lines.append(
+                        f"- {item}: {int(area):,} m² ({percentage:.1f} %)")
+                    csv_data.append({'분석 구분': title, '항목': item, '값': '', '단위': '',
+                                    '면적(m²)': f"{int(area):,}", '비율(%)': f"{percentage:.1f}"})
 
         summary_lines.append("")
 
@@ -421,7 +529,8 @@ with st.spinner("보고서 생성중..."):
     csv_string = csv_buffer.getvalue()
 
 # 요약 텍스트 영역 표시
-st.text_area("", summary_text, height=400)
+st.text_area("분석 결과 요약", summary_text, height=400,
+             label_visibility="collapsed")
 
 # --- 최종 ZIP 생성 및 다운로드 버튼 ---
 with st.spinner("다운로드 파일 생성중..."):
@@ -432,7 +541,8 @@ with st.spinner("다운로드 파일 생성중..."):
             img_buffer = io.BytesIO()
             fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
             img_buffer.seek(0)
-            zip_file.writestr(f"{analysis_type}_analysis.png", img_buffer.getvalue())
+            zip_file.writestr(
+                f"{analysis_type}_analysis.png", img_buffer.getvalue())
             plt.close(fig)
         for analysis_type in valid_selected_types:
             results = dem_results.get(analysis_type, {})
@@ -442,7 +552,8 @@ with st.spinner("다운로드 파일 생성중..."):
         for analysis_type, data in shp_buffers.items():
             with zipfile.ZipFile(data["buffer"], 'r') as inner_zip:
                 for file_info in inner_zip.infolist():
-                    zip_file.writestr(file_info.filename, inner_zip.read(file_info.filename))
+                    zip_file.writestr(file_info.filename,
+                                      inner_zip.read(file_info.filename))
     zip_buffer.seek(0)
 
 # --- 8. 최종 다운로드 섹션 ---

@@ -80,13 +80,39 @@ def calculate_accurate_scalebar_params(pixel_size, img_shape, target_size_mm, fi
     }
 
 
-def draw_accurate_scalebar(fig, ax, pixel_size, scale_params, img_shape):
+def draw_accurate_scalebar(fig, ax, pixel_size, scale_params, img_shape, position='왼쪽 아래'):
     """정확한 축척 막대를 그립니다."""
+    position_mapping = {
+        '왼쪽 아래': {'x': 0.1, 'y': 0.02},
+        '오른쪽 아래': {'x': 0.9, 'y': 0.02},
+        '왼쪽 위': {'x': 0.1, 'y': 0.9},
+        '오른쪽 위': {'x': 0.9, 'y': 0.9},
+    }
+    pos = position_mapping.get(position, position_mapping['왼쪽 아래'])
+    
     total_length, units, segments = scale_params['length'], scale_params['units'], scale_params['segments']
     scalebar_width_fig = scale_params['scalebar_width_fig']
-    start_x_fig, start_y_fig, bar_height_fig = 0.1, 0.02, 0.008
-    bg_rect = Rectangle((start_x_fig - 0.005, start_y_fig - 0.005), scalebar_width_fig + 0.01,
-                        bar_height_fig * 2 + 0.03, facecolor='white', edgecolor='none',
+    bar_height_fig = 0.008
+
+    # X 위치 계산
+    start_x_fig = pos['x']
+    if '오른쪽' in position:
+        start_x_fig -= scalebar_width_fig
+        
+    # Y 위치 계산
+    if '위' in position:
+        # 앵커가 상단이므로 막대와 텍스트를 아래에 그립니다.
+        text_y_fig = pos['y']
+        start_y_fig = text_y_fig - (bar_height_fig * 2) - 0.005
+    else:
+        # 앵커가 하단이므로 막대와 텍스트를 위에 그립니다.
+        start_y_fig = pos['y']
+        text_y_fig = start_y_fig + bar_height_fig * 2 + 0.005
+
+    bg_y_fig = start_y_fig - 0.005
+    bg_height = bar_height_fig * 2 + 0.03
+    bg_rect = Rectangle((start_x_fig - 0.005, bg_y_fig), scalebar_width_fig + 0.01,
+                        bg_height, facecolor='white', edgecolor='none',
                         alpha=0.9, transform=fig.transFigure)
     fig.patches.append(bg_rect)
     segment_width_fig = scalebar_width_fig / segments
@@ -100,7 +126,6 @@ def draw_accurate_scalebar(fig, ax, pixel_size, scale_params, img_shape):
             fig.patches.append(rect)
     for i in range(segments + 1):
         text_x_fig = start_x_fig + i * segment_width_fig
-        text_y_fig = start_y_fig + bar_height_fig * 2 + 0.005
         segment_val = i * (total_length / segments)
         text_label = f'{segment_val:.1f}' if units == 'km' and segment_val != int(
             segment_val) else f'{int(segment_val)}'
