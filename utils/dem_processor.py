@@ -113,12 +113,14 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
     if dem_needed:
         all_xs, all_ys, all_zs = [], [], []
         try:
-            contour_iterator = gpd.read_postgis(sql, engine, geom_col='geometry', chunksize=10000)
+            contour_iterator = gpd.read_postgis(
+                sql, engine, geom_col='geometry', chunksize=10000)
             is_empty = True
             for contour_chunk in contour_iterator:
                 is_empty = False
                 contour_chunk = contour_chunk.to_crs(target_crs)
-                xs, ys, zs = extract_points_from_geometries(contour_chunk, 'elevation')
+                xs, ys, zs = extract_points_from_geometries(
+                    contour_chunk, 'elevation')
                 if xs.size > 0:
                     all_xs.append(xs)
                     all_ys.append(ys)
@@ -266,7 +268,7 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
 
     if vector_analysis_types:
         analysis_configs = {
-            'soil': 'public.kr_soil_map',
+            'soil': 'public.kr_soil_map', # 새로운 토양 데이터 사용
             'hsg': 'public.kr_hsg_map',
             'landcover': 'public.kr_landcover_map_l3'
         }
@@ -281,46 +283,48 @@ def run_full_analysis(user_gdf_original, selected_types, subbasin_name):
                 analysis_crs = 'EPSG:5174'
             else:
                 analysis_crs = 'EPSG:5186'
-
+            
             srid = analysis_crs.split(':')[1]
 
             # 사용자 GDF를 현재 분석에 맞는 CRS로 변환
             user_gdf_reprojected = user_gdf_original.to_crs(analysis_crs)
-            user_wkt = user_gdf_reprojected.union_all().wkt
 
-            # 쿼리는 이제 테이블과 지오메트리에 동일한 SRID를 사용
-            sql = f"SELECT * FROM {table_name} AS t1 WHERE ST_Intersects(t1.geometry, ST_GeomFromText('{user_wkt}', {srid}));"
+            # --- DB 조회를 위한 지오메트리 및 경계 상자 생성 ---
+            # 분석 유형에 따라 조회에 사용할 지오메트리를 결정 (토양도는 envelope 사용)
+            if analysis_type == 'soil':
+                query_geom = user_gdf_reprojected.union_all().envelope
+            else:
+                query_geom = user_gdf_reprojected.union_all()
+            
+            user_wkt = query_geom.wkt
+            query_bounds = query_geom.bounds  # (minx, miny, maxx, maxy)
+
+            # 조회 지오메트리의 경계로부터 BBox를 생성하여 필터링 불일치 방지
+            bbox_polygon = (
+                f"ST_MakeEnvelope({query_bounds[0]}, {query_bounds[1]}, "
+                f"{query_bounds[2]}, {query_bounds[3]}, {srid})"
+            )
+
+            # 1단계: BBox로 빠르게 필터링 (&& 연산자 사용)
+            # 2단계: ST_Intersects 연산은 클라이언트 측 클리핑으로 대체하여 DB 오류 회피
+            sql = (
+                f"SELECT * FROM {table_name} AS t1 "
+                f"WHERE t1.geometry && {bbox_polygon};"
+            )
 
             try:
-                iterator = gpd.read_postgis(
-                    sql, engine, geom_col='geometry', chunksize=5000)
-                clipped_chunks = []
-                for chunk in iterator:
-                    if not chunk.empty:
-                        # 반환된 청크는 테이블과 동일한 CRS를 가져야 함
-                        # 이를 올바르게 설정하고 analysis_crs와 일치하는지 확인
-                        if chunk.crs is None:
-                            chunk.set_crs(analysis_crs, inplace=True)
-                        elif chunk.crs != analysis_crs:
-                            chunk = chunk.to_crs(analysis_crs)
-
-                        # 데이터 클리핑
-                        clipped_chunk = clip_geodataframe(
-                            chunk, user_gdf_reprojected)
-                        if not clipped_chunk.empty:
-                            clipped_chunks.append(clipped_chunk)
-
-                if clipped_chunks:
-                    final_gdf = gpd.GeoDataFrame(pd.concat(
-                        clipped_chunks, ignore_index=True), crs=analysis_crs)
-                    dem_results[analysis_type] = {'gdf': final_gdf}
+                # DB에서 BBox 내의 모든 데이터를 가져옵니다.
+                db_gdf = gpd.read_postgis(sql, engine, geom_col='geometry')
+                
+                if not db_gdf.empty:
+                    # 3. 이제 두 데이터가 동일한 CRS에 있으므로, 클라이언트 측에서 안전하게 클리핑합니다.
+                    clipped_gdf = clip_geodataframe(db_gdf, user_gdf_reprojected)
+                    dem_results[analysis_type] = {'gdf': clipped_gdf}
                 else:
-                    dem_results[analysis_type] = {
-                        'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
-
+                    dem_results[analysis_type] = {'gdf': gpd.GeoDataFrame(geometry=[], crs=analysis_crs)}
             except Exception as e:
                 print(f"Error processing {analysis_type}: {e}")
                 dem_results[analysis_type] = {
-                    'gdf': gpd.GeoDataFrame(crs=analysis_crs)}
+                    'gdf': gpd.GeoDataFrame(geometry=[], crs=analysis_crs)}
 
     return dem_results

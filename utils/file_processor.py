@@ -193,26 +193,34 @@ def process_shp_file(data, epsg_code):
 def clip_geodataframe(target_gdf, clip_gdf):
     """
     대상 GeoDataFrame을 클리핑 GeoDataFrame의 경계로 자릅니다.
-
-    인자:
-        target_gdf (gpd.GeoDataFrame): 잘라낼 GeoDataFrame.
-        clip_gdf (gpd.GeoDataFrame): 클리핑 경계를 정의하는 GeoDataFrame.
-
-    반환값:
-        gpd.GeoDataFrame: 잘라낸 GeoDataFrame.
+    안정성을 위해 geopandas의 기본 clip 기능을 사용합니다.
     """
     if target_gdf.empty or clip_gdf.empty:
         return gpd.GeoDataFrame(columns=target_gdf.columns, crs=target_gdf.crs)
-        
-    # 두 GeoDataFrame이 동일한 CRS를 가지고 있는지 확인
+
+    # CRS가 일치하는지 확인하고, 다르면 변환합니다.
     if target_gdf.crs != clip_gdf.crs:
         target_gdf = target_gdf.to_crs(clip_gdf.crs)
 
-    # 클립 수행
-    clipped_gdf = gpd.clip(target_gdf, clip_gdf, keep_geom_type=True)
+    # 클리핑 전에 도형 유효성 검사 및 복구
+    target_gdf['geometry'] = target_gdf.geometry.buffer(0)
+    clip_gdf['geometry'] = clip_gdf.geometry.buffer(0)
 
-    # 클리핑으로 인해 발생할 수 있는 유효하지 않거나 빈 지오메트리 필터링
-    clipped_gdf = clipped_gdf[clipped_gdf.geometry.is_valid & ~
-                              clipped_gdf.geometry.is_empty]
+    # 유효하지 않거나 빈 지오메트리 제거
+    target_gdf = target_gdf[target_gdf.geometry.is_valid & ~target_gdf.geometry.is_empty]
+    clip_gdf = clip_gdf[clip_gdf.geometry.is_valid & ~clip_gdf.geometry.is_empty]
 
-    return clipped_gdf
+    if target_gdf.empty or clip_gdf.empty:
+        st.warning("클리핑할 유효한 피처가 남아있지 않습니다. 빈 결과를 반환합니다.")
+        return gpd.GeoDataFrame(columns=target_gdf.columns, crs=target_gdf.crs)
+
+    # gpd.clip 대신 더 강력한 gpd.overlay 사용
+    try:
+        clipped_gdf = gpd.overlay(target_gdf, clip_gdf, how='intersection', keep_geom_type=False)
+        if not clipped_gdf.empty:
+            clipped_gdf = clipped_gdf[clipped_gdf.geometry.is_valid & ~clipped_gdf.geometry.is_empty]
+        
+        return clipped_gdf
+    except Exception as e:
+        st.warning(f"클리핑 작업(overlay) 중 오류가 발생했습니다: {e}. 빈 결과를 반환합니다.")
+        return gpd.GeoDataFrame(columns=target_gdf.columns, crs=target_gdf.crs)
